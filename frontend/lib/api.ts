@@ -72,10 +72,74 @@ export async function stravaAuthorizeUrl(token: string) {
   return api<{ url: string }>('/api/strava/authorize', { token })
 }
 
-export async function chat(token: string, message: string) {
-  return api<{ reply: string }>('/api/chat', {
+export type ConversationListItem = {
+  id: string
+  title: string
+  updated_at: string
+}
+
+export type ChatTurn = {
+  role: 'user' | 'assistant'
+  text: string
+  created_at: string
+}
+
+export type Conversation = {
+  id: string
+  title: string
+  messages: ChatTurn[]
+  created_at: string
+  updated_at: string
+}
+
+export async function listConversations(token: string) {
+  return api<{ conversations: ConversationListItem[] }>('/api/conversations', { token })
+}
+
+export async function createConversation(token: string) {
+  return api<Conversation>('/api/conversations', { method: 'POST', token })
+}
+
+export async function getConversation(token: string, id: string) {
+  return api<Conversation>(`/api/conversations/${encodeURIComponent(id)}`, { token })
+}
+
+export async function chat(token: string, message: string, conversationId?: string | null) {
+  return api<{ reply: string; conversation_id: string }>('/api/chat', {
     method: 'POST',
     token,
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+    }),
   })
+}
+
+export type Goal = {
+  id: string
+  distance_km: number
+  distance_label: string
+  weeks: number
+  sessions_per_week: number
+  plan: string
+  created_at: string
+}
+
+export async function listGoals(token: string) {
+  return api<{ goals: Goal[] }>('/api/goals', { token })
+}
+
+export async function createGoal(
+  token: string,
+  body: { distance_km: number; weeks: number; sessions_per_week: number }
+) {
+  return api<Goal>('/api/goals', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  })
+}
+
+export async function getGoal(token: string, id: string) {
+  return api<Goal>(`/api/goals/${encodeURIComponent(id)}`, { token })
 }
