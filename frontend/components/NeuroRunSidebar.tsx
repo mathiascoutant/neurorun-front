@@ -134,8 +134,8 @@ export function NeuroRunSidebar({
 
       {section === 'goals' ? (
         <p className="border-t border-white/[0.06] pt-4 text-xs leading-relaxed text-white/45">
-          Définis une distance, un délai et ta disponibilité : le plan s’appuie sur ton historique Strava (activités
-          récentes).
+          Distance, temps visé, délai et séances/semaine : le plan inclut un avis de faisabilité selon ton historique
+          Strava.
         </p>
       ) : null}
     </div>

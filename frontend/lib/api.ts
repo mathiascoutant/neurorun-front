@@ -148,28 +148,42 @@ export type Goal = {
   distance_label: string
   weeks: number
   sessions_per_week: number
+  target_time: string
   plan: string
   created_at: string
 }
 
+function normalizeGoal(g: Goal): Goal {
+  return {
+    ...g,
+    target_time: g.target_time == null ? '' : String(g.target_time),
+    plan: g.plan == null ? '' : String(g.plan),
+  }
+}
+
 export async function listGoals(token: string) {
   const data = await api<{ goals: Goal[] | null }>('/api/goals', { token })
-  return { goals: asArray(data.goals) }
+  return { goals: asArray(data.goals).map((g) => normalizeGoal(g as Goal)) }
 }
 
 export async function createGoal(
   token: string,
-  body: { distance_km: number; weeks: number; sessions_per_week: number }
+  body: {
+    distance_km: number
+    weeks: number
+    sessions_per_week: number
+    target_time: string
+  }
 ) {
   const g = await api<Goal>('/api/goals', {
     method: 'POST',
     token,
     body: JSON.stringify(body),
   })
-  return { ...g, plan: g.plan == null ? '' : String(g.plan) }
+  return normalizeGoal(g)
 }
 
 export async function getGoal(token: string, id: string) {
   const g = await api<Goal>(`/api/goals/${encodeURIComponent(id)}`, { token })
-  return { ...g, plan: g.plan == null ? '' : String(g.plan) }
+  return normalizeGoal(g)
 }

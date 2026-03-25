@@ -12,7 +12,7 @@ const DISTANCES: { km: number; label: string }[] = [
   { km: 42, label: '42 km — marathon' },
 ]
 
-type Step = 1 | 2 | 3 | 4
+type Step = 1 | 2 | 3 | 4 | 5
 
 export function GoalsPanel() {
   const [goals, setGoals] = useState<Goal[]>([])
@@ -24,6 +24,7 @@ export function GoalsPanel() {
   const [distKm, setDistKm] = useState<number>(10)
   const [weeks, setWeeks] = useState(8)
   const [sessions, setSessions] = useState(3)
+  const [targetTime, setTargetTime] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
 
@@ -75,6 +76,7 @@ export function GoalsPanel() {
     setDistKm(10)
     setWeeks(8)
     setSessions(3)
+    setTargetTime('')
   }
 
   async function submitWizard() {
@@ -87,6 +89,7 @@ export function GoalsPanel() {
         distance_km: distKm,
         weeks,
         sessions_per_week: sessions,
+        target_time: targetTime.trim(),
       })
       setWizardOpen(false)
       await refresh()
@@ -114,7 +117,7 @@ export function GoalsPanel() {
           </button>
         </div>
         <p className="text-xs text-white/45">
-          Étape {step} sur 4 — les réponses serviront à générer un plan personnalisé (données Strava incluses).
+          Étape {step} sur 5 — le plan et un avis de faisabilité s’appuient sur ton historique Strava.
         </p>
         {err ? (
           <div className="rounded-xl border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm text-red-100">{err}</div>
@@ -188,10 +191,44 @@ export function GoalsPanel() {
         ) : null}
         {step === 4 ? (
           <div className="space-y-4">
+            <p className="text-sm font-medium text-white/85">Quel temps vises-tu sur cette distance ?</p>
+            <p className="text-xs text-white/45">
+              Ex. « 48 min », « 1h40 », « moins de 4h », ou « finir sans chrono précis ». L’IA jugera la faisabilité avec
+              tes stats Strava, le nombre de semaines et tes séances par semaine.
+            </p>
+            <input
+              type="text"
+              className="field border-white/[0.08] bg-surface-2/80"
+              placeholder="Ex. 50 min, 1h30…"
+              value={targetTime}
+              onChange={(e) => setTargetTime(e.target.value)}
+              maxLength={120}
+              autoComplete="off"
+            />
+            <div className="flex gap-2">
+              <button type="button" className="btn-quiet flex-1" onClick={() => setStep(3)}>
+                Retour
+              </button>
+              <button
+                type="button"
+                className="btn-brand flex-1"
+                onClick={() => setStep(5)}
+                disabled={targetTime.trim().length < 2}
+              >
+                Suivant
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {step === 5 ? (
+          <div className="space-y-4">
             <div className="panel space-y-2 p-4 text-sm text-white/75">
               <p>
                 <span className="text-white/45">Course :</span>{' '}
                 {DISTANCES.find((d) => d.km === distKm)?.label ?? `${distKm} km`}
+              </p>
+              <p>
+                <span className="text-white/45">Temps visé :</span> {targetTime.trim()}
               </p>
               <p>
                 <span className="text-white/45">Délai :</span> {weeks} semaine(s)
@@ -201,10 +238,11 @@ export function GoalsPanel() {
               </p>
             </div>
             <p className="text-xs text-white/40">
-              L’IA analysera jusqu’à 50 activités Strava pour proposer un plan réaliste. Ça peut prendre une minute.
+              L’IA commence par un avis de faisabilité (chrono vs tes sorties), puis détaille le plan. Jusqu’à 50
+              activités Strava — compte jusqu’à une minute.
             </p>
             <div className="flex gap-2">
-              <button type="button" className="btn-quiet flex-1" onClick={() => setStep(3)} disabled={submitting}>
+              <button type="button" className="btn-quiet flex-1" onClick={() => setStep(4)} disabled={submitting}>
                 Retour
               </button>
               <button type="button" className="btn-brand flex-1" onClick={() => void submitWizard()} disabled={submitting}>
@@ -247,6 +285,7 @@ export function GoalsPanel() {
                 >
                   <span className="font-medium">{g.distance_label}</span>
                   <span className="text-[10px] text-white/35">
+                    {g.target_time ? `${g.target_time} · ` : ''}
                     {g.weeks} sem. · {g.sessions_per_week} séances/sem.
                   </span>
                 </button>
@@ -265,6 +304,12 @@ export function GoalsPanel() {
             <header className="border-b border-white/[0.06] pb-4">
               <h3 className="font-display text-lg font-semibold text-white">{detail.distance_label}</h3>
               <p className="mt-1 text-xs text-white/45">
+                {detail.target_time ? (
+                  <>
+                    Temps visé : <span className="text-white/70">{detail.target_time}</span>
+                    <span className="text-white/25"> · </span>
+                  </>
+                ) : null}
                 {detail.weeks} semaine(s) · {detail.sessions_per_week} séance(s)/semaine · créé le{' '}
                 {new Date(detail.created_at).toLocaleDateString('fr-FR')}
               </p>
