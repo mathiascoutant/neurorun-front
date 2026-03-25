@@ -34,7 +34,7 @@ export default function LoginPage() {
     <AuthShell
       kicker="Espace membre"
       title="Bon retour"
-      subtitle="Connecte-toi pour accéder au coach IA et à tes analyses Strava."
+      subtitle="Connecte-toi à NeuroRun pour le coach IA et tes analyses Strava."
       footer={
         <p className="text-center text-sm text-white/45">
           Nouveau ?{' '}

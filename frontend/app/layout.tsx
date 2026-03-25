@@ -16,8 +16,9 @@ const ibm = IBM_Plex_Sans({
 })
 
 export const metadata: Metadata = {
-  title: 'RunApp — Coach & Strava',
-  description: 'Analyse tes activités Strava avec une IA entraîneur.',
+  title: 'NeuroRun — Coach & Strava',
+  description:
+    'NeuroRun : entraînement, objectifs et lecture de tes résultats Strava avec un coach IA.',
 }
 
 export const viewport: Viewport = {

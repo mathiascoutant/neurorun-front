@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { Mark } from '@/components/Mark'
+import { TrainingGuideBlocks } from '@/components/TrainingGuideBlocks'
 import { chat, fetchMe } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 
@@ -14,6 +15,8 @@ const SUGGESTIONS = [
   'Comment progresser sur 10 km ?',
   'Analyse mon volume de la semaine',
   'Conseils récup après une séance intense',
+  'Quel objectif pour mon prochain semi-marathon ?',
+  'Explique l’évolution de mon allure sur le mois',
 ]
 
 export default function ChatPage() {
@@ -23,7 +26,7 @@ export default function ChatPage() {
     {
       role: 'assistant',
       text:
-        'Coach RunApp : pose une question courte sur tes sorties Strava — réponses brèves, en français.',
+        'NeuroRun : pose une question courte sur tes sorties Strava — entraînement, objectifs ou lecture de tes résultats. Réponses brèves, en français.',
     },
   ])
   const [input, setInput] = useState('')
@@ -112,7 +115,9 @@ export default function ChatPage() {
       </header>
 
       <div className="flex flex-1 flex-col">
-        <div className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-6 pb-40">
+        <div className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 py-6 pb-40">
+          <TrainingGuideBlocks onPrompt={send} disabled={loading} />
+
           <div className="flex flex-wrap gap-2">
             {SUGGESTIONS.map((s) => (
               <button
