@@ -18,6 +18,7 @@ import {
 } from 'recharts'
 import { Mark } from '@/components/Mark'
 import {
+  asArray,
   fetchMe,
   fetchStravaDashboard,
   type StravaDashboard,
@@ -76,10 +77,11 @@ function PaceBlock({
 }: {
   title: string
   subtitle: string
-  points: StravaPacePoint[]
+  points: StravaPacePoint[] | null | undefined
   stroke: string
 }) {
-  if (points.length === 0) {
+  const pts = asArray(points)
+  if (pts.length === 0) {
     return (
       <div className="panel p-5">
         <h3 className="font-display text-sm font-semibold text-white">{title}</h3>
@@ -88,7 +90,7 @@ function PaceBlock({
       </div>
     )
   }
-  const rows = paceRows(points)
+  const rows = paceRows(pts)
   return (
     <div className="panel p-5">
       <h3 className="font-display text-sm font-semibold text-white">{title}</h3>
@@ -189,14 +191,13 @@ export function RunDashboard() {
     )
   }
 
-  const weeklyRows =
-    data?.weekly.map((w) => ({
-      week_short: formatWeekShort(w.week_start),
-      km: w.km,
-      hours: w.hours,
-      runs: w.runs,
-      avg_hr: w.avg_hr != null && w.avg_hr > 0 ? w.avg_hr : null,
-    })) ?? []
+  const weeklyRows = asArray(data?.weekly).map((w) => ({
+    week_short: formatWeekShort(w.week_start),
+    km: w.km,
+    hours: w.hours,
+    runs: w.runs,
+    avg_hr: w.avg_hr != null && w.avg_hr > 0 ? w.avg_hr : null,
+  }))
 
   return (
     <div className="flex min-h-[100dvh]">

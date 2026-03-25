@@ -120,9 +120,25 @@ export type StravaDashboard = {
   pace_marathon: StravaPacePoint[];
 };
 
+function normalizeStravaDashboard(d: StravaDashboard): StravaDashboard {
+  return {
+    ...d,
+    period: d.period == null ? "" : String(d.period),
+    runs_total: typeof d.runs_total === "number" ? d.runs_total : 0,
+    total_km: typeof d.total_km === "number" ? d.total_km : 0,
+    total_hours: typeof d.total_hours === "number" ? d.total_hours : 0,
+    weekly: asArray(d.weekly),
+    pace_5k: asArray(d.pace_5k),
+    pace_10k: asArray(d.pace_10k),
+    pace_half: asArray(d.pace_half),
+    pace_marathon: asArray(d.pace_marathon),
+  };
+}
+
 export async function fetchStravaDashboard(token: string, period: StravaDashboardPeriod) {
   const q = encodeURIComponent(period);
-  return api<StravaDashboard>(`/api/strava/dashboard?period=${q}`, { token });
+  const raw = await api<StravaDashboard>(`/api/strava/dashboard?period=${q}`, { token });
+  return normalizeStravaDashboard(raw);
 }
 
 export type ConversationListItem = {
@@ -146,7 +162,7 @@ export type Conversation = {
 };
 
 /** Mongo / JSON peuvent renvoyer null à la place d’un tableau vide. */
-function asArray<T>(v: T[] | null | undefined): T[] {
+export function asArray<T>(v: T[] | null | undefined): T[] {
   return Array.isArray(v) ? v : [];
 }
 
