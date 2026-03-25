@@ -27,6 +27,9 @@ export function NeuroRunSidebar({
   disabled,
   onCloseMobile,
 }: Props) {
+  const conv = Array.isArray(conversations) ? conversations : []
+  const sugg = Array.isArray(suggestions) ? suggestions : []
+
   function navBtn(s: AppSection, label: string) {
     const on = section === s
     return (
@@ -73,7 +76,7 @@ export function NeuroRunSidebar({
               Historique
             </p>
             <ul className="space-y-1">
-              {conversations.map((c) => (
+              {conv.map((c) => (
                 <li key={c.id}>
                   <button
                     type="button"
@@ -99,7 +102,7 @@ export function NeuroRunSidebar({
                 </li>
               ))}
             </ul>
-            {conversations.length === 0 ? (
+            {conv.length === 0 ? (
               <p className="px-1 text-xs text-white/35">
                 Aucune conversation pour l’instant — écris au coach ou crée un fil dédié.
               </p>
@@ -110,7 +113,7 @@ export function NeuroRunSidebar({
               Idées
             </p>
             <div className="flex max-h-40 flex-col gap-1.5 overflow-y-auto pr-1">
-              {suggestions.map((s) => (
+              {sugg.map((s) => (
                 <button
                   key={s}
                   type="button"

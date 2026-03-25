@@ -33,12 +33,12 @@ const SUGGESTIONS = [
   'Explique l’évolution de mon allure sur le mois',
 ]
 
-function mapConvToMessages(conv: { messages: { role: string; text: string }[] }): Msg[] {
-  const raw = conv.messages || []
+function mapConvToMessages(conv: { messages?: { role: string; text: string | null }[] | null }): Msg[] {
+  const raw = Array.isArray(conv.messages) ? conv.messages : []
   if (raw.length === 0) return [WELCOME]
   return raw.map((m) => ({
     role: m.role === 'user' ? 'user' : 'assistant',
-    text: m.text,
+    text: m.text == null ? '' : String(m.text),
   }))
 }
 
@@ -87,9 +87,10 @@ export default function ChatPage() {
       // on affiche le coach sans historique persisté.
       try {
         const { conversations: list } = await listConversations(token)
-        setConversations(list)
-        if (list.length > 0) {
-          const top = list[0]
+        const safeList = Array.isArray(list) ? list : []
+        setConversations(safeList)
+        if (safeList.length > 0) {
+          const top = safeList[0]
           setActiveConversationId(top.id)
           try {
             const full = await getConversation(token, top.id)
@@ -293,7 +294,7 @@ export default function ChatPage() {
                 <div className="space-y-4">
                   {messages.map((msg, i) => (
                     <div
-                      key={`${msg.role}-${i}-${msg.text.slice(0, 12)}`}
+                      key={`${msg.role}-${i}-${(msg.text ?? '').slice(0, 12)}`}
                       className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-up`}
                     >
                       <div
@@ -303,7 +304,7 @@ export default function ChatPage() {
                             : 'border border-white/[0.08] bg-surface-2/90 text-white/90'
                         }`}
                       >
-                        {msg.text}
+                        {msg.text ?? ''}
                       </div>
                     </div>
                   ))}

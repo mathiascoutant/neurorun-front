@@ -92,20 +92,43 @@ export type Conversation = {
   updated_at: string
 }
 
+/** Mongo / JSON peuvent renvoyer null à la place d’un tableau vide. */
+function asArray<T>(v: T[] | null | undefined): T[] {
+  return Array.isArray(v) ? v : []
+}
+
+function normalizeChatTurns(messages: ChatTurn[] | null | undefined): ChatTurn[] {
+  return asArray(messages).map((m) => ({
+    ...m,
+    role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
+    text: m.text == null ? '' : String(m.text),
+  }))
+}
+
+function normalizeConversation(c: Conversation): Conversation {
+  return {
+    ...c,
+    messages: normalizeChatTurns(c.messages),
+  }
+}
+
 export async function listConversations(token: string) {
-  return api<{ conversations: ConversationListItem[] }>('/api/conversations', { token })
+  const data = await api<{ conversations: ConversationListItem[] | null }>('/api/conversations', { token })
+  return { conversations: asArray(data.conversations) }
 }
 
 export async function createConversation(token: string) {
-  return api<Conversation>('/api/conversations', { method: 'POST', token })
+  const c = await api<Conversation>('/api/conversations', { method: 'POST', token })
+  return normalizeConversation(c)
 }
 
 export async function getConversation(token: string, id: string) {
-  return api<Conversation>(`/api/conversations/${encodeURIComponent(id)}`, { token })
+  const c = await api<Conversation>(`/api/conversations/${encodeURIComponent(id)}`, { token })
+  return normalizeConversation(c)
 }
 
 export async function chat(token: string, message: string, conversationId?: string | null) {
-  return api<{ reply: string; conversation_id: string }>('/api/chat', {
+  const d = await api<{ reply: string; conversation_id: string }>('/api/chat', {
     method: 'POST',
     token,
     body: JSON.stringify({
@@ -113,6 +136,10 @@ export async function chat(token: string, message: string, conversationId?: stri
       ...(conversationId ? { conversation_id: conversationId } : {}),
     }),
   })
+  return {
+    reply: d.reply == null ? '' : String(d.reply),
+    conversation_id: d.conversation_id == null ? '' : String(d.conversation_id),
+  }
 }
 
 export type Goal = {
@@ -126,20 +153,23 @@ export type Goal = {
 }
 
 export async function listGoals(token: string) {
-  return api<{ goals: Goal[] }>('/api/goals', { token })
+  const data = await api<{ goals: Goal[] | null }>('/api/goals', { token })
+  return { goals: asArray(data.goals) }
 }
 
 export async function createGoal(
   token: string,
   body: { distance_km: number; weeks: number; sessions_per_week: number }
 ) {
-  return api<Goal>('/api/goals', {
+  const g = await api<Goal>('/api/goals', {
     method: 'POST',
     token,
     body: JSON.stringify(body),
   })
+  return { ...g, plan: g.plan == null ? '' : String(g.plan) }
 }
 
 export async function getGoal(token: string, id: string) {
-  return api<Goal>(`/api/goals/${encodeURIComponent(id)}`, { token })
+  const g = await api<Goal>(`/api/goals/${encodeURIComponent(id)}`, { token })
+  return { ...g, plan: g.plan == null ? '' : String(g.plan) }
 }

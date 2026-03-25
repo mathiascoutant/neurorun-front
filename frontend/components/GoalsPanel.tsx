@@ -30,8 +30,12 @@ export function GoalsPanel() {
   const refresh = useCallback(async () => {
     const token = getToken()
     if (!token) return
-    const { goals: g } = await listGoals(token)
-    setGoals(g)
+    try {
+      const { goals: g } = await listGoals(token)
+      setGoals(Array.isArray(g) ? g : [])
+    } catch {
+      setGoals([])
+    }
   }, [])
 
   useEffect(() => {
