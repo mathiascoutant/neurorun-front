@@ -78,21 +78,36 @@ export default function ChatPage() {
           router.replace('/link-strava/')
           return
         }
+      } catch {
+        router.replace('/login/')
+        return
+      }
+
+      // Ne pas renvoyer vers login si l’API conversations est absente ou en erreur (ancien backend) :
+      // on affiche le coach sans historique persisté.
+      try {
         const { conversations: list } = await listConversations(token)
         setConversations(list)
         if (list.length > 0) {
           const top = list[0]
           setActiveConversationId(top.id)
-          const full = await getConversation(token, top.id)
-          setMessages(mapConvToMessages(full))
+          try {
+            const full = await getConversation(token, top.id)
+            setMessages(mapConvToMessages(full))
+          } catch {
+            setActiveConversationId(null)
+            setMessages([WELCOME])
+          }
         } else {
           setActiveConversationId(null)
           setMessages([WELCOME])
         }
-        setReady(true)
       } catch {
-        router.replace('/login/')
+        setConversations([])
+        setActiveConversationId(null)
+        setMessages([WELCOME])
       }
+      setReady(true)
     })()
   }, [router])
 
