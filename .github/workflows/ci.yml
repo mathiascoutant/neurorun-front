@@ -38,7 +38,12 @@ jobs:
         id: image
         run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      # Pilote « docker » : évite de tirer moby/buildkit depuis Docker Hub au démarrage du builder
+      # (timeouts réseau fréquents sur registry-1.docker.io dans les runners GitHub).
+      - name: Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
 
       - name: Connexion à GHCR
         if: env.PUSH_IMAGE == 'true'
