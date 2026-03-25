@@ -37,7 +37,7 @@ function LinkStravaContent() {
     (async () => {
       try {
         const me = await fetchMe(token);
-        if (me.strava_linked) router.replace("/chat/");
+        if (me.strava_linked) router.replace("/dashboard/");
       } catch {
         router.replace("/login/");
       }
@@ -115,11 +115,8 @@ function LinkStravaContent() {
             >
               {loading ? "Redirection…" : "Ouvrir Strava"}
             </button>
-            <Link
-              href="/chat/"
-              className="btn-quiet flex-1 text-center sm:flex-none"
-            >
-              J’ai déjà lié — accéder au chat
+            <Link href="/dashboard/" className="btn-quiet flex-1 text-center sm:flex-none">
+              J’ai déjà lié — accéder au tableau de bord
             </Link>
           </div>
         </div>

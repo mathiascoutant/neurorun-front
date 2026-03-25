@@ -20,7 +20,7 @@ export default function GatePage() {
         const me = await fetchMe(token)
         if (off) return
         if (!me.strava_linked) router.replace('/link-strava/')
-        else router.replace('/chat/')
+        else router.replace('/dashboard/')
       } catch {
         if (!off) router.replace('/login/')
       }

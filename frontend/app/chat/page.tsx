@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { GoalsPanel } from '@/components/GoalsPanel'
 import { Mark } from '@/components/Mark'
 import { NeuroRunSidebar, type AppSection } from '@/components/NeuroRunSidebar'
@@ -42,10 +42,11 @@ function mapConvToMessages(conv: { messages?: { role: string; text: string | nul
   }))
 }
 
-export default function ChatPage() {
+function ChatPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const section: AppSection = searchParams.get('section') === 'goals' ? 'goals' : 'chat'
   const [ready, setReady] = useState(false)
-  const [section, setSection] = useState<AppSection>('chat')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
@@ -157,9 +158,6 @@ export default function ChatPage() {
   async function send(text: string) {
     const token = getToken()
     if (!token || !text.trim() || loading) return
-    if (section !== 'chat') {
-      setSection('chat')
-    }
     const userText = text.trim()
     setInput('')
     setMessages((m) => [...m, { role: 'user', text: userText }])
@@ -211,7 +209,6 @@ export default function ChatPage() {
         </div>
         <NeuroRunSidebar
           section={section}
-          onSection={setSection}
           conversations={conversations}
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
@@ -243,7 +240,6 @@ export default function ChatPage() {
         </div>
         <NeuroRunSidebar
           section={section}
-          onSection={setSection}
           conversations={conversations}
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
@@ -273,6 +269,9 @@ export default function ChatPage() {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              <Link href="/dashboard/" className="btn-quiet text-xs">
+                Accueil
+              </Link>
               <Link href="/link-strava/" className="btn-quiet hidden text-xs sm:inline-flex">
                 Strava
               </Link>
@@ -346,5 +345,19 @@ export default function ChatPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-2xl border-2 border-brand-orange/30 border-t-brand-orange" />
+        </main>
+      }
+    >
+      <ChatPageContent />
+    </Suspense>
   )
 }

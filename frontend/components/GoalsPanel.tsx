@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import type { Goal } from '@/lib/api'
 import { SimplePlanBody } from '@/components/SimplePlanBody'
-import { createGoal, getGoal, goalChat, listGoals, previewGoalFeasibility } from '@/lib/api'
+import { createGoal, deleteGoal, getGoal, goalChat, listGoals, previewGoalFeasibility } from '@/lib/api'
 import { getToken } from '@/lib/auth'
 
 const DISTANCES: { km: number; label: string }[] = [
@@ -34,6 +34,8 @@ export function GoalsPanel() {
   const [goalChatInput, setGoalChatInput] = useState('')
   const [goalChatBusy, setGoalChatBusy] = useState(false)
   const [goalChatErr, setGoalChatErr] = useState('')
+  const [goalDeleteBusy, setGoalDeleteBusy] = useState(false)
+  const [goalDeleteErr, setGoalDeleteErr] = useState('')
 
   const refresh = useCallback(async () => {
     const token = getToken()
@@ -63,6 +65,7 @@ export function GoalsPanel() {
   useEffect(() => {
     setGoalChatInput('')
     setGoalChatErr('')
+    setGoalDeleteErr('')
   }, [selectedId])
 
   useEffect(() => {
@@ -80,6 +83,31 @@ export function GoalsPanel() {
         }
       })()
   }, [selectedId])
+
+  async function onDeleteGoal() {
+    const token = getToken()
+    if (!token || !detail?.id || goalDeleteBusy) return
+    if (
+      !window.confirm(
+        'Supprimer cet objectif ? Le plan et la discussion avec le coach seront effacés définitivement.',
+      )
+    ) {
+      return
+    }
+    const id = detail.id
+    setGoalDeleteBusy(true)
+    setGoalDeleteErr('')
+    try {
+      await deleteGoal(token, id)
+      setSelectedId(null)
+      setDetail(null)
+      await refresh()
+    } catch (er) {
+      setGoalDeleteErr(er instanceof Error ? er.message : 'Suppression impossible')
+    } finally {
+      setGoalDeleteBusy(false)
+    }
+  }
 
   async function onGoalChatSubmit(e: FormEvent) {
     e.preventDefault()
@@ -395,19 +423,32 @@ export function GoalsPanel() {
           </div>
         ) : (
           <article className="panel p-5 sm:p-6">
-            <header className="border-b border-white/[0.06] pb-4">
-              <h3 className="font-display text-lg font-semibold text-white">{detail.distance_label}</h3>
-              <p className="mt-1 text-xs text-white/45">
-                {detail.target_time ? (
-                  <>
-                    Chrono visé : <span className="text-white/70">{detail.target_time}</span>
-                    <span className="text-white/25"> · </span>
-                  </>
-                ) : null}
-                {detail.weeks} semaine(s) · {detail.sessions_per_week} séance(s)/semaine · créé le{' '}
-                {new Date(detail.created_at).toLocaleDateString('fr-FR')}
-              </p>
+            <header className="flex flex-col gap-3 border-b border-white/[0.06] pb-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h3 className="font-display text-lg font-semibold text-white">{detail.distance_label}</h3>
+                <p className="mt-1 text-xs text-white/45">
+                  {detail.target_time ? (
+                    <>
+                      Chrono visé : <span className="text-white/70">{detail.target_time}</span>
+                      <span className="text-white/25"> · </span>
+                    </>
+                  ) : null}
+                  {detail.weeks} semaine(s) · {detail.sessions_per_week} séance(s)/semaine · créé le{' '}
+                  {new Date(detail.created_at).toLocaleDateString('fr-FR')}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-quiet shrink-0 border-red-500/25 py-2 text-xs text-red-200/95 hover:border-red-500/40 hover:bg-red-500/10 disabled:opacity-50"
+                disabled={goalDeleteBusy}
+                onClick={() => void onDeleteGoal()}
+              >
+                {goalDeleteBusy ? 'Suppression…' : 'Supprimer l’objectif'}
+              </button>
             </header>
+            {goalDeleteErr ? (
+              <p className="mt-3 text-sm text-red-200/90">{goalDeleteErr}</p>
+            ) : null}
             <SimplePlanBody text={detail.plan} className="mt-5" />
 
             <section className="mt-8 border-t border-white/[0.06] pt-6">

@@ -22,7 +22,7 @@ export default function LoginPage() {
       const res = await login(email, password)
       setToken(res.token)
       if (!res.user.strava_linked) router.push('/link-strava/')
-      else router.push('/chat/')
+      else router.push('/dashboard/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur')
     } finally {

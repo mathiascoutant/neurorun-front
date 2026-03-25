@@ -1,10 +1,10 @@
 import type { ConversationListItem } from '@/lib/api'
+import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
 
 export type AppSection = 'chat' | 'goals'
 
 type Props = {
   section: AppSection
-  onSection: (s: AppSection) => void
   conversations: ConversationListItem[]
   activeConversationId: string | null
   onSelectConversation: (id: string) => void
@@ -17,7 +17,6 @@ type Props = {
 
 export function NeuroRunSidebar({
   section,
-  onSection,
   conversations,
   activeConversationId,
   onSelectConversation,
@@ -29,34 +28,11 @@ export function NeuroRunSidebar({
 }: Props) {
   const conv = Array.isArray(conversations) ? conversations : []
   const sugg = Array.isArray(suggestions) ? suggestions : []
-
-  function navBtn(s: AppSection, label: string) {
-    const on = section === s
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          onSection(s)
-          onCloseMobile?.()
-        }}
-        className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
-          on
-            ? 'bg-brand-orange/20 text-white ring-1 ring-brand-orange/40'
-            : 'text-white/55 hover:bg-white/[0.06] hover:text-white'
-        }`}
-      >
-        {label}
-      </button>
-    )
-  }
+  const navActive = section === 'goals' ? 'goals' : 'coach'
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 p-4">
-      <div className="space-y-2">
-        <p className="kicker pl-1 text-[10px] text-brand-ice/80">Menu</p>
-        {navBtn('chat', 'Coach')}
-        {navBtn('goals', 'Objectifs')}
-      </div>
+      <MemberPrimaryNav active={navActive} onNavigate={onCloseMobile} />
 
       {section === 'chat' ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3 border-t border-white/[0.06] pt-4">

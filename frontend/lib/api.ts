@@ -92,6 +92,39 @@ export async function stravaAuthorizeUrl(token: string) {
   return api<{ url: string }>("/api/strava/authorize", { token });
 }
 
+export type StravaDashboardPeriod = "7d" | "30d" | "90d" | "365d" | "all";
+
+export type StravaDashboardWeek = {
+  week_start: string;
+  km: number;
+  hours: number;
+  avg_hr?: number;
+  runs: number;
+};
+
+export type StravaPacePoint = {
+  date: string;
+  pace_min_per_km: number;
+  distance_km: number;
+};
+
+export type StravaDashboard = {
+  period: string;
+  runs_total: number;
+  total_km: number;
+  total_hours: number;
+  weekly: StravaDashboardWeek[];
+  pace_5k: StravaPacePoint[];
+  pace_10k: StravaPacePoint[];
+  pace_half: StravaPacePoint[];
+  pace_marathon: StravaPacePoint[];
+};
+
+export async function fetchStravaDashboard(token: string, period: StravaDashboardPeriod) {
+  const q = encodeURIComponent(period);
+  return api<StravaDashboard>(`/api/strava/dashboard?period=${q}`, { token });
+}
+
 export type ConversationListItem = {
   id: string;
   title: string;
@@ -251,6 +284,13 @@ export async function createGoal(token: string, body: GoalDraftPayload) {
 export async function getGoal(token: string, id: string) {
   const g = await api<Goal>(`/api/goals/${encodeURIComponent(id)}`, { token });
   return normalizeGoal(g);
+}
+
+export async function deleteGoal(token: string, id: string) {
+  await api<{ ok?: boolean }>(`/api/goals/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    token,
+  });
 }
 
 export async function goalChat(token: string, goalId: string, message: string) {
