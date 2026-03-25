@@ -232,6 +232,14 @@ export type GoalCoachTurn = {
   created_at: string;
 };
 
+export type PlannedSession = {
+  week: number;
+  session: number;
+  distance_km: number;
+  pace_sec_per_km?: number | null;
+  summary?: string;
+};
+
 export type Goal = {
   id: string;
   distance_km: number;
@@ -240,8 +248,27 @@ export type Goal = {
   sessions_per_week: number;
   target_time: string;
   plan: string;
+  planned_sessions?: PlannedSession[];
   coach_thread?: GoalCoachTurn[];
   created_at: string;
+};
+
+export type GoalCalendarItem = {
+  date: string;
+  week: number;
+  session: number;
+  summary: string;
+  planned_km: number;
+  target_pace_sec_per_km?: number | null;
+  status: "upcoming" | "done" | "partial" | "missed";
+  strava_activity_id?: number | null;
+  actual_km?: number | null;
+  actual_pace_sec_per_km?: number | null;
+};
+
+export type GoalCalendarResponse = {
+  timezone: string;
+  items: GoalCalendarItem[];
 };
 
 function normalizeCoachThread(raw: Goal["coach_thread"]): GoalCoachTurn[] {
@@ -257,6 +284,7 @@ function normalizeGoal(g: Goal): Goal {
     ...g,
     target_time: g.target_time == null ? "" : String(g.target_time),
     plan: g.plan == null ? "" : String(g.plan),
+    planned_sessions: asArray(g.planned_sessions as PlannedSession[] | null),
     coach_thread: normalizeCoachThread(g.coach_thread),
   };
 }
@@ -300,6 +328,25 @@ export async function createGoal(token: string, body: GoalDraftPayload) {
 export async function getGoal(token: string, id: string) {
   const g = await api<Goal>(`/api/goals/${encodeURIComponent(id)}`, { token });
   return normalizeGoal(g);
+}
+
+export async function getGoalCalendar(token: string, goalId: string) {
+  const d = await api<GoalCalendarResponse>(
+    `/api/goals/${encodeURIComponent(goalId)}/calendar`,
+    { token },
+  );
+  return {
+    timezone: d.timezone == null ? "" : String(d.timezone),
+    items: asArray(d.items).map((it) => ({
+      ...it,
+      date: it.date == null ? "" : String(it.date),
+      status:
+        it.status === "done" || it.status === "partial" || it.status === "missed"
+          ? it.status
+          : "upcoming",
+      summary: it.summary == null ? "" : String(it.summary),
+    })) as GoalCalendarItem[],
+  };
 }
 
 export async function deleteGoal(token: string, id: string) {

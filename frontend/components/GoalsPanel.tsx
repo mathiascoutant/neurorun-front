@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import type { Goal } from '@/lib/api'
+import { GoalTrainingCalendar } from '@/components/GoalTrainingCalendar'
 import { SimplePlanBody } from '@/components/SimplePlanBody'
 import { createGoal, deleteGoal, getGoal, goalChat, listGoals, previewGoalFeasibility } from '@/lib/api'
 import { getToken } from '@/lib/auth'
@@ -36,6 +37,7 @@ export function GoalsPanel() {
   const [goalChatErr, setGoalChatErr] = useState('')
   const [goalDeleteBusy, setGoalDeleteBusy] = useState(false)
   const [goalDeleteErr, setGoalDeleteErr] = useState('')
+  const authToken = getToken()
 
   const refresh = useCallback(async () => {
     const token = getToken()
@@ -461,6 +463,7 @@ export function GoalsPanel() {
               {goalDeleteErr ? (
                 <p className="mt-3 text-sm text-red-200/90">{goalDeleteErr}</p>
               ) : null}
+              {authToken ? <GoalTrainingCalendar goalId={detail.id} token={authToken} /> : null}
               <SimplePlanBody text={detail.plan} className="mt-5" />
             </article>
 
