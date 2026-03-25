@@ -23,7 +23,7 @@ export default function ChatPage() {
     {
       role: 'assistant',
       text:
-        "Je suis ton coach RunApp. Pose-moi une question sur tes séances Strava — je m'appuie sur tes activités récentes pour répondre en français.",
+        'Coach RunApp : pose une question courte sur tes sorties Strava — réponses brèves, en français.',
     },
   ])
   const [input, setInput] = useState('')
