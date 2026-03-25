@@ -4,8 +4,8 @@ ARG APP_VERSION=0.0.0
 
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY frontend/package.json ./
-RUN npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -14,6 +14,8 @@ ARG APP_VERSION
 ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_APP_VERSION=${APP_VERSION}
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Évite les OOM fréquents sur les runners CI pendant `next build`
+ENV NODE_OPTIONS=--max-old-space-size=6144
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ .
 RUN npm run build

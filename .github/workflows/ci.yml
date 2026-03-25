@@ -24,7 +24,9 @@ jobs:
 
       - name: Install et build (vérification)
         working-directory: frontend
-        run: npm install && npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: npm ci && npm run build
 
       - name: Lire la version (version.yml)
         id: ver
@@ -53,6 +55,9 @@ jobs:
           context: .
           file: ./Dockerfile
           push: ${{ env.PUSH_IMAGE == 'true' }}
+          # Évite des échecs / manifestes inattendus avec GHCR sur certaines images Buildx
+          provenance: false
+          sbom: false
           build-args: |
             APP_VERSION=${{ steps.ver.outputs.version }}
           tags: |
