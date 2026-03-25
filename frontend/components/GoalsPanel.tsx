@@ -377,9 +377,10 @@ export function GoalsPanel() {
     )
   }
 
-  return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
-      <aside className="panel w-full shrink-0 p-4 lg:w-72">
+  const listAside = (
+    <aside
+      className={`panel w-full shrink-0 p-4 ${detail ? 'lg:w-56 xl:w-60' : 'lg:w-72'}`}
+    >
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-display text-sm font-semibold">Tes objectifs</h2>
           <button type="button" className="btn-quiet py-1.5 text-xs" onClick={openWizard}>
@@ -416,52 +417,64 @@ export function GoalsPanel() {
           </ul>
         )}
       </aside>
+  )
+
+  return (
+    <div
+      className={`mx-auto flex w-full flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start ${
+        detail ? 'max-w-[min(100%,1520px)] xl:px-6' : 'max-w-3xl'
+      }`}
+    >
+      {listAside}
       <main className="min-w-0 flex-1">
         {!detail ? (
           <div className="panel p-6 text-sm text-white/45">
             Choisis un objectif dans la liste ou crée-en un nouveau.
           </div>
         ) : (
-          <article className="panel p-5 sm:p-6">
-            <header className="flex flex-col gap-3 border-b border-white/[0.06] pb-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <h3 className="font-display text-lg font-semibold text-white">{detail.distance_label}</h3>
-                <p className="mt-1 text-xs text-white/45">
-                  {detail.target_time ? (
-                    <>
-                      Chrono visé : <span className="text-white/70">{detail.target_time}</span>
-                      <span className="text-white/25"> · </span>
-                    </>
-                  ) : null}
-                  {detail.weeks} semaine(s) · {detail.sessions_per_week} séance(s)/semaine · créé le{' '}
-                  {new Date(detail.created_at).toLocaleDateString('fr-FR')}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn-quiet shrink-0 border-red-500/25 py-2 text-xs text-red-200/95 hover:border-red-500/40 hover:bg-red-500/10 disabled:opacity-50"
-                disabled={goalDeleteBusy}
-                onClick={() => void onDeleteGoal()}
-              >
-                {goalDeleteBusy ? 'Suppression…' : 'Supprimer l’objectif'}
-              </button>
-            </header>
-            {goalDeleteErr ? (
-              <p className="mt-3 text-sm text-red-200/90">{goalDeleteErr}</p>
-            ) : null}
-            <SimplePlanBody text={detail.plan} className="mt-5" />
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:gap-5">
+            {/* Plan : colonne plus étroite, scroll indépendant */}
+            <article className="panel flex min-h-0 w-full flex-col p-5 sm:p-6 lg:max-h-[calc(100dvh-9rem)] lg:w-[min(100%,440px)] lg:shrink-0 lg:overflow-y-auto xl:w-[min(100%,480px)]">
+              <header className="flex flex-col gap-3 border-b border-white/[0.06] pb-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="font-display text-lg font-semibold text-white">{detail.distance_label}</h3>
+                  <p className="mt-1 text-xs text-white/45">
+                    {detail.target_time ? (
+                      <>
+                        Chrono visé : <span className="text-white/70">{detail.target_time}</span>
+                        <span className="text-white/25"> · </span>
+                      </>
+                    ) : null}
+                    {detail.weeks} semaine(s) · {detail.sessions_per_week} séance(s)/semaine · créé le{' '}
+                    {new Date(detail.created_at).toLocaleDateString('fr-FR')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-quiet shrink-0 border-red-500/25 py-2 text-xs text-red-200/95 hover:border-red-500/40 hover:bg-red-500/10 disabled:opacity-50"
+                  disabled={goalDeleteBusy}
+                  onClick={() => void onDeleteGoal()}
+                >
+                  {goalDeleteBusy ? 'Suppression…' : 'Supprimer l’objectif'}
+                </button>
+              </header>
+              {goalDeleteErr ? (
+                <p className="mt-3 text-sm text-red-200/90">{goalDeleteErr}</p>
+              ) : null}
+              <SimplePlanBody text={detail.plan} className="mt-5" />
+            </article>
 
-            <section className="mt-8 border-t border-white/[0.06] pt-6">
+            {/* Coach : prend le reste de la largeur — bulles IA plus larges, zone de scroll plus haute */}
+            <section className="panel flex min-h-0 w-full min-w-0 flex-1 flex-col p-5 sm:p-6 lg:max-h-[calc(100dvh-9rem)]">
               <h4 className="font-display text-sm font-semibold text-white">Discussion avec le coach</h4>
               <p className="mt-1.5 text-xs leading-relaxed text-white/45">
                 Partage ton ressenti (énergie, sommeil, stress), des douleurs ou une gêne, ou demande à alléger ou
-                ajuster le chrono / le nombre de séances. Réponses sans jugement — la conversation reste liée à cet
-                objectif.
+                ajuster le chrono / le nombre de séances.
               </p>
               {goalChatErr ? (
                 <p className="mt-2 text-xs text-red-200/90">{goalChatErr}</p>
               ) : null}
-              <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
+              <div className="mt-4 min-h-[12rem] flex-1 space-y-3 overflow-y-auto pr-1 lg:min-h-0">
                 {(detail.coach_thread ?? []).length === 0 ? (
                   <p className="text-xs text-white/35">Écris un premier message pour ouvrir la discussion.</p>
                 ) : null}
@@ -471,7 +484,7 @@ export function GoalsPanel() {
                     className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[min(100%,420px)] rounded-2xl px-3 py-2 text-sm ${
+                      className={`max-w-[min(100%,720px)] rounded-2xl px-3 py-2 text-sm ${
                         m.role === 'user'
                           ? 'bg-gradient-to-br from-brand-orange/25 to-brand-deep/20 text-white'
                           : 'border border-white/[0.08] bg-surface-2/80 text-white/88'
@@ -489,9 +502,9 @@ export function GoalsPanel() {
                   </div>
                 ))}
               </div>
-              <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={onGoalChatSubmit}>
+              <form className="mt-4 shrink-0 flex flex-col gap-2 border-t border-white/[0.06] pt-4 sm:flex-row" onSubmit={onGoalChatSubmit}>
                 <input
-                  className="field flex-1 border-white/[0.08] bg-surface-2/80 py-2.5 text-sm"
+                  className="field min-w-0 flex-1 border-white/[0.08] bg-surface-2/80 py-2.5 text-sm"
                   placeholder="Ex. J’ai mal au genou depuis hier…"
                   value={goalChatInput}
                   onChange={(e) => setGoalChatInput(e.target.value)}
@@ -503,7 +516,7 @@ export function GoalsPanel() {
                 </button>
               </form>
             </section>
-          </article>
+          </div>
         )}
       </main>
     </div>
