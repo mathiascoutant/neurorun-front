@@ -10,7 +10,10 @@ RUN npm install
 FROM node:20-alpine AS builder
 WORKDIR /app
 ARG APP_VERSION
+# Vide = URLs /api/... sur le même hôte (neurorun.fr ou www via nginx).
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_APP_VERSION=${APP_VERSION}
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ .
 RUN npm run build

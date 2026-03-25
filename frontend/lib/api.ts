@@ -1,4 +1,17 @@
-const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080').replace(/\/$/, '')
+/**
+ * Base de l’API (sans slash final).
+ * - Non défini / vide en build prod → URLs relatives `/api/...` (même domaine, ex. neurorun.fr derrière nginx).
+ * - En local : obligatoire dans `frontend/.env.local` → NEXT_PUBLIC_API_URL=http://localhost:8080
+ */
+function apiBase(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL
+  if (raw == null || raw === '') {
+    return ''
+  }
+  return raw.replace(/\/$/, '')
+}
+
+const API = apiBase()
 
 export type MeUser = {
   id: string
