@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useState } from 'react'
 import type { Goal } from '@/lib/api'
-import { createGoal, getGoal, listGoals } from '@/lib/api'
+import { SimplePlanBody } from '@/components/SimplePlanBody'
+import { createGoal, getGoal, goalChat, listGoals, previewGoalFeasibility } from '@/lib/api'
 import { getToken } from '@/lib/auth'
 
 const DISTANCES: { km: number; label: string }[] = [
@@ -27,6 +28,12 @@ export function GoalsPanel() {
   const [targetTime, setTargetTime] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
+  const [feasibilityLoading, setFeasibilityLoading] = useState(false)
+  const [feasibilityText, setFeasibilityText] = useState('')
+  const [feasibilityErr, setFeasibilityErr] = useState('')
+  const [goalChatInput, setGoalChatInput] = useState('')
+  const [goalChatBusy, setGoalChatBusy] = useState(false)
+  const [goalChatErr, setGoalChatErr] = useState('')
 
   const refresh = useCallback(async () => {
     const token = getToken()
@@ -54,6 +61,11 @@ export function GoalsPanel() {
   }, [refresh])
 
   useEffect(() => {
+    setGoalChatInput('')
+    setGoalChatErr('')
+  }, [selectedId])
+
+  useEffect(() => {
     if (!selectedId) {
       setDetail(null)
       return
@@ -69,6 +81,60 @@ export function GoalsPanel() {
       })()
   }, [selectedId])
 
+  async function onGoalChatSubmit(e: FormEvent) {
+    e.preventDefault()
+    const token = getToken()
+    if (!token || !detail?.id || !goalChatInput.trim() || goalChatBusy) return
+    setGoalChatErr('')
+    setGoalChatBusy(true)
+    try {
+      await goalChat(token, detail.id, goalChatInput.trim())
+      setGoalChatInput('')
+      const g = await getGoal(token, detail.id)
+      setDetail(g)
+    } catch (er) {
+      setGoalChatErr(er instanceof Error ? er.message : 'Erreur')
+    } finally {
+      setGoalChatBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!wizardOpen || step !== 5) return
+    const tt = targetTime.trim()
+    if (tt.length < 2) return
+    const token = getToken()
+    if (!token) return
+
+    const ac = new AbortController()
+    setFeasibilityLoading(true)
+    setFeasibilityErr('')
+    setFeasibilityText('')
+
+    ;(async () => {
+      try {
+        const { feasibility } = await previewGoalFeasibility(
+          token,
+          {
+            distance_km: distKm,
+            weeks,
+            sessions_per_week: sessions,
+            target_time: tt,
+          },
+          { signal: ac.signal }
+        )
+        if (!ac.signal.aborted) setFeasibilityText(feasibility)
+      } catch (e) {
+        if (ac.signal.aborted) return
+        setFeasibilityErr(e instanceof Error ? e.message : 'Impossible de charger l’avis')
+      } finally {
+        if (!ac.signal.aborted) setFeasibilityLoading(false)
+      }
+    })()
+
+    return () => ac.abort()
+  }, [wizardOpen, step, distKm, weeks, sessions, targetTime])
+
   function openWizard() {
     setErr('')
     setWizardOpen(true)
@@ -77,6 +143,9 @@ export function GoalsPanel() {
     setWeeks(8)
     setSessions(3)
     setTargetTime('')
+    setFeasibilityText('')
+    setFeasibilityErr('')
+    setFeasibilityLoading(false)
   }
 
   async function submitWizard() {
@@ -117,7 +186,7 @@ export function GoalsPanel() {
           </button>
         </div>
         <p className="text-xs text-white/45">
-          Étape {step} sur 5 — le plan et un avis de faisabilité s’appuient sur ton historique Strava.
+          Étape {step} sur 5 — à l’étape finale, l’avis de faisabilité s’affiche avant la génération du plan.
         </p>
         {err ? (
           <div className="rounded-xl border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm text-red-100">{err}</div>
@@ -191,10 +260,10 @@ export function GoalsPanel() {
         ) : null}
         {step === 4 ? (
           <div className="space-y-4">
-            <p className="text-sm font-medium text-white/85">Quel temps vises-tu sur cette distance ?</p>
+            <p className="text-sm font-medium text-white/85">Quel chrono vises-tu sur cette distance ?</p>
             <p className="text-xs text-white/45">
-              Ex. « 48 min », « 1h40 », « moins de 4h », ou « finir sans chrono précis ». L’IA jugera la faisabilité avec
-              tes stats Strava, le nombre de semaines et tes séances par semaine.
+              Ex. « 48 min », « 1h40 », « moins de 4h » — précise l’unité pour que l’avis soit clair. Tu peux aussi
+              indiquer « finir sans chrono précis ».
             </p>
             <input
               type="text"
@@ -228,7 +297,7 @@ export function GoalsPanel() {
                 {DISTANCES.find((d) => d.km === distKm)?.label ?? `${distKm} km`}
               </p>
               <p>
-                <span className="text-white/45">Temps visé :</span> {targetTime.trim()}
+                <span className="text-white/45">Chrono visé :</span> {targetTime.trim()}
               </p>
               <p>
                 <span className="text-white/45">Délai :</span> {weeks} semaine(s)
@@ -237,15 +306,40 @@ export function GoalsPanel() {
                 <span className="text-white/45">Rythme :</span> {sessions} séance(s) / semaine
               </p>
             </div>
+
+            <div className="panel border-brand-orange/20 bg-brand-orange/[0.06] p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-brand-ice/90">
+                Avis faisabilité (Strava + objectif)
+              </p>
+              {feasibilityLoading ? (
+                <p className="mt-3 text-sm text-white/45">Analyse en cours…</p>
+              ) : null}
+              {feasibilityErr ? (
+                <p className="mt-3 text-sm text-red-200/90">{feasibilityErr}</p>
+              ) : null}
+              {!feasibilityLoading && feasibilityText ? (
+                <SimplePlanBody text={feasibilityText} className="mt-3" />
+              ) : null}
+            </div>
+
             <p className="text-xs text-white/40">
-              L’IA commence par un avis de faisabilité (chrono vs tes sorties), puis détaille le plan. Jusqu’à 50
-              activités Strava — compte jusqu’à une minute.
+              Quand tu es prêt, génère le plan détaillé (semaine par semaine). Cela complète l’avis ci-dessus ; compte
+              jusqu’à une minute.
             </p>
             <div className="flex gap-2">
               <button type="button" className="btn-quiet flex-1" onClick={() => setStep(4)} disabled={submitting}>
                 Retour
               </button>
-              <button type="button" className="btn-brand flex-1" onClick={() => void submitWizard()} disabled={submitting}>
+              <button
+                type="button"
+                className="btn-brand flex-1"
+                onClick={() => void submitWizard()}
+                disabled={
+                  submitting ||
+                  feasibilityLoading ||
+                  (!feasibilityErr && !feasibilityText && !feasibilityLoading)
+                }
+              >
                 {submitting ? 'Génération…' : 'Générer le plan'}
               </button>
             </div>
@@ -285,7 +379,7 @@ export function GoalsPanel() {
                 >
                   <span className="font-medium">{g.distance_label}</span>
                   <span className="text-[10px] text-white/35">
-                    {g.target_time ? `${g.target_time} · ` : ''}
+                    {g.target_time ? `Chrono visé ${g.target_time} · ` : ''}
                     {g.weeks} sem. · {g.sessions_per_week} séances/sem.
                   </span>
                 </button>
@@ -306,7 +400,7 @@ export function GoalsPanel() {
               <p className="mt-1 text-xs text-white/45">
                 {detail.target_time ? (
                   <>
-                    Temps visé : <span className="text-white/70">{detail.target_time}</span>
+                    Chrono visé : <span className="text-white/70">{detail.target_time}</span>
                     <span className="text-white/25"> · </span>
                   </>
                 ) : null}
@@ -314,7 +408,60 @@ export function GoalsPanel() {
                 {new Date(detail.created_at).toLocaleDateString('fr-FR')}
               </p>
             </header>
-            <div className="prose-plan mt-5 whitespace-pre-wrap text-sm leading-relaxed text-white/85">{detail.plan}</div>
+            <SimplePlanBody text={detail.plan} className="mt-5" />
+
+            <section className="mt-8 border-t border-white/[0.06] pt-6">
+              <h4 className="font-display text-sm font-semibold text-white">Discussion avec le coach</h4>
+              <p className="mt-1.5 text-xs leading-relaxed text-white/45">
+                Partage ton ressenti (énergie, sommeil, stress), des douleurs ou une gêne, ou demande à alléger ou
+                ajuster le chrono / le nombre de séances. Réponses sans jugement — la conversation reste liée à cet
+                objectif.
+              </p>
+              {goalChatErr ? (
+                <p className="mt-2 text-xs text-red-200/90">{goalChatErr}</p>
+              ) : null}
+              <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
+                {(detail.coach_thread ?? []).length === 0 ? (
+                  <p className="text-xs text-white/35">Écris un premier message pour ouvrir la discussion.</p>
+                ) : null}
+                {(detail.coach_thread ?? []).map((m, i) => (
+                  <div
+                    key={`${m.role}-${i}-${m.created_at}`}
+                    className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[min(100%,420px)] rounded-2xl px-3 py-2 text-sm ${
+                        m.role === 'user'
+                          ? 'bg-gradient-to-br from-brand-orange/25 to-brand-deep/20 text-white'
+                          : 'border border-white/[0.08] bg-surface-2/80 text-white/88'
+                      }`}
+                    >
+                      {m.role === 'assistant' ? (
+                        <SimplePlanBody
+                          text={m.text}
+                          className="!space-y-0.5 [&_h4]:mt-3 [&_h4]:pb-1 [&_h4]:text-sm [&_h5]:mt-2 [&_h5]:text-xs"
+                        />
+                      ) : (
+                        <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={onGoalChatSubmit}>
+                <input
+                  className="field flex-1 border-white/[0.08] bg-surface-2/80 py-2.5 text-sm"
+                  placeholder="Ex. J’ai mal au genou depuis hier…"
+                  value={goalChatInput}
+                  onChange={(e) => setGoalChatInput(e.target.value)}
+                  disabled={goalChatBusy}
+                  autoComplete="off"
+                />
+                <button type="submit" className="btn-brand shrink-0 px-5 py-2.5 sm:self-stretch" disabled={goalChatBusy || !goalChatInput.trim()}>
+                  {goalChatBusy ? 'Envoi…' : 'Envoyer'}
+                </button>
+              </form>
+            </section>
           </article>
         )}
       </main>
