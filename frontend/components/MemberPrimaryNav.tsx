@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-export type MemberNavActive = 'dashboard' | 'coach' | 'goals'
+export type MemberNavActive = 'dashboard' | 'coach' | 'goals' | 'prevision'
 
 type Props = {
   active: MemberNavActive
@@ -28,6 +28,16 @@ export function MemberPrimaryNav({ active, onNavigate }: Props) {
         <span className="block">Coach</span>
         <span className="mt-0.5 block text-[10px] font-normal leading-snug text-white/40">
           IA · tes sorties Strava
+        </span>
+      </Link>
+      <Link
+        href="/prevision/"
+        onClick={onNavigate}
+        className={`${itemBase} ${active === 'prevision' ? itemOn : itemOff}`}
+      >
+        <span className="block">Prévision</span>
+        <span className="mt-0.5 block text-[10px] font-normal leading-snug text-white/40">
+          5 km → marathon · Strava
         </span>
       </Link>
       <Link

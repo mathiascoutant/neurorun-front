@@ -141,6 +141,104 @@ export async function fetchStravaDashboard(token: string, period: StravaDashboar
   return normalizeStravaDashboard(raw);
 }
 
+export type RaceLegForecast = {
+  id: string;
+  label: string;
+  distance_km: number;
+  time_sec: number;
+  pace_sec_per_km: number;
+  sample_runs: number;
+  runs_with_hr: number;
+  data_source: string;
+  ref_leg_id?: string;
+  target_hr_bpm?: number;
+  hr_band_low?: number;
+  hr_band_high?: number;
+  baseline_time_sec?: number;
+};
+
+export type RaceForecastPayload = {
+  legs: RaceLegForecast[];
+  runs_analyzed: number;
+  generated_at: string;
+};
+
+function normalizeRaceForecastPayload(d: RaceForecastPayload): RaceForecastPayload {
+  return {
+    runs_analyzed: typeof d.runs_analyzed === "number" ? d.runs_analyzed : 0,
+    generated_at: d.generated_at == null ? "" : String(d.generated_at),
+    legs: asArray(d.legs).map((leg) => ({
+      id: leg.id == null ? "" : String(leg.id),
+      label: leg.label == null ? "" : String(leg.label),
+      distance_km: typeof leg.distance_km === "number" ? leg.distance_km : 0,
+      time_sec: typeof leg.time_sec === "number" ? leg.time_sec : 0,
+      pace_sec_per_km: typeof leg.pace_sec_per_km === "number" ? leg.pace_sec_per_km : 0,
+      sample_runs: typeof leg.sample_runs === "number" ? leg.sample_runs : 0,
+      runs_with_hr: typeof leg.runs_with_hr === "number" ? leg.runs_with_hr : 0,
+      data_source: leg.data_source == null ? "" : String(leg.data_source),
+      ref_leg_id: leg.ref_leg_id == null ? undefined : String(leg.ref_leg_id),
+      target_hr_bpm: typeof leg.target_hr_bpm === "number" ? leg.target_hr_bpm : undefined,
+      hr_band_low: typeof leg.hr_band_low === "number" ? leg.hr_band_low : undefined,
+      hr_band_high: typeof leg.hr_band_high === "number" ? leg.hr_band_high : undefined,
+      baseline_time_sec:
+        typeof leg.baseline_time_sec === "number" ? leg.baseline_time_sec : undefined,
+    })),
+  };
+}
+
+export async function fetchRaceForecast(token: string) {
+  const raw = await api<RaceForecastPayload>("/api/strava/forecast", { token });
+  return normalizeRaceForecastPayload(raw);
+}
+
+export type ForecastAdjustEnergy = "great" | "normal" | "tired";
+
+export type RaceForecastAdjustResponse = {
+  baseline: RaceForecastPayload;
+  adjusted: RaceForecastPayload;
+  rationale_fr: string;
+  ai_used: boolean;
+  factors: {
+    "5k": number;
+    "10k": number;
+    half: number;
+    marathon: number;
+    rationale_fr: string;
+  };
+};
+
+function normalizeAdjustResponse(d: RaceForecastAdjustResponse): RaceForecastAdjustResponse {
+  const factors = d.factors as RaceForecastAdjustResponse["factors"] | null | undefined;
+  return {
+    baseline: normalizeRaceForecastPayload(d.baseline as RaceForecastPayload),
+    adjusted: normalizeRaceForecastPayload(d.adjusted as RaceForecastPayload),
+    rationale_fr: d.rationale_fr == null ? "" : String(d.rationale_fr),
+    ai_used: Boolean(d.ai_used),
+    factors: {
+      "5k": typeof factors?.["5k"] === "number" ? factors!["5k"] : 1,
+      "10k": typeof factors?.["10k"] === "number" ? factors!["10k"] : 1,
+      half: typeof factors?.half === "number" ? factors!.half : 1,
+      marathon: typeof factors?.marathon === "number" ? factors!.marathon : 1,
+      rationale_fr: factors?.rationale_fr == null ? "" : String(factors.rationale_fr),
+    },
+  };
+}
+
+export async function adjustRaceForecast(
+  token: string,
+  body: { energy: ForecastAdjustEnergy; injured: boolean },
+) {
+  const raw = await api<RaceForecastAdjustResponse>("/api/strava/forecast/adjust", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      energy: body.energy,
+      injured: body.injured,
+    }),
+  });
+  return normalizeAdjustResponse(raw);
+}
+
 export type ConversationListItem = {
   id: string;
   title: string;
