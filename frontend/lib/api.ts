@@ -347,6 +347,8 @@ export type Goal = {
   target_time: string;
   plan: string;
   planned_sessions?: PlannedSession[];
+  /** Jours 0=lun…6=dim (optionnel ; sinon motif serveur par défaut). */
+  calendar_day_offsets?: number[];
   coach_thread?: GoalCoachTurn[];
   created_at: string;
 };

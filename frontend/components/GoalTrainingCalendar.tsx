@@ -131,9 +131,11 @@ function sessionTooltip(it: GoalCalendarItem): string {
 type Props = {
   goalId: string
   token: string
+  /** Change après régénération du plan côté API pour recharger le calendrier. */
+  planStamp?: string
 }
 
-export function GoalTrainingCalendar({ goalId, token }: Props) {
+export function GoalTrainingCalendar({ goalId, token, planStamp = '' }: Props) {
   const [items, setItems] = useState<GoalCalendarItem[]>([])
   const [tz, setTz] = useState('')
   const [err, setErr] = useState('')
@@ -159,7 +161,7 @@ export function GoalTrainingCalendar({ goalId, token }: Props) {
     return () => {
       off = true
     }
-  }, [goalId, token])
+  }, [goalId, token, planStamp])
 
   const itemsByDate = useMemo(() => {
     const m = new Map<string, GoalCalendarItem[]>()
@@ -184,7 +186,7 @@ export function GoalTrainingCalendar({ goalId, token }: Props) {
 
   if (loading) {
     return (
-      <div className="mt-5 rounded-xl border border-white/[0.06] bg-surface-2/40 px-3 py-2 text-xs text-white/40">
+      <div className="rounded-xl border border-white/[0.06] bg-surface-2/40 px-3 py-2 text-xs text-white/40">
         Chargement calendrier…
       </div>
     )
@@ -192,7 +194,7 @@ export function GoalTrainingCalendar({ goalId, token }: Props) {
 
   if (err) {
     return (
-      <div className="mt-5 rounded-xl border border-white/[0.06] bg-surface-2/40 px-3 py-2 text-xs text-red-200/85">
+      <div className="rounded-xl border border-white/[0.06] bg-surface-2/40 px-3 py-2 text-xs text-red-200/85">
         {err}
       </div>
     )
@@ -203,7 +205,7 @@ export function GoalTrainingCalendar({ goalId, token }: Props) {
   }
 
   return (
-    <div className="mt-5 border-t border-white/[0.06] pt-4">
+    <div className="flex min-h-0 flex-1 flex-col">
       <h4 className="font-display text-sm font-semibold text-white">Calendrier des séances</h4>
       <p className="mt-1 text-[11px] leading-relaxed text-white/40">
         Comparaison avec tes sorties Strava : distance prévue <span className="text-white/55">minimum</span> (tu peux
@@ -225,7 +227,7 @@ export function GoalTrainingCalendar({ goalId, token }: Props) {
         </span>
       </div>
 
-      <div className="mt-4 max-h-[min(70vh,36rem)] space-y-6 overflow-y-auto pr-1">
+      <div className="mt-4 min-h-0 max-h-[min(62vh,30rem)] flex-1 space-y-6 overflow-y-auto pr-1 lg:max-h-none">
         {months.map((mo) => (
           <div key={`${mo.year}-${mo.month}`}>
             <h5 className="mb-2 capitalize font-medium text-white/70">{mo.label}</h5>
