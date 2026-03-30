@@ -170,8 +170,20 @@ function speakKm(km: number, splitSec: number, tenKSec: number) {
 
 type RunPhase = "setup" | "running" | "ended";
 
-/** Pas d’affichage pour la distance (m) — lecture plus stable. */
-const DISTANCE_UI_STEP_M = 10;
+/** Pas d’affichage pour la distance (m) — 1 m pour réagir vite après le fix GPS. */
+const DISTANCE_UI_STEP_M = 1;
+
+const GEO_SEED: PositionOptions = {
+  enableHighAccuracy: true,
+  maximumAge: 0,
+  timeout: 30000,
+};
+
+const GEO_WATCH: PositionOptions = {
+  enableHighAccuracy: true,
+  maximumAge: 0,
+  timeout: 20000,
+};
 
 function useNavigatorOnline(): boolean {
   const [online, setOnline] = useState(
@@ -206,8 +218,11 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
   /** Incrémenté sur le tick chrono pour relire accMRef (allure / % objectif lissés). */
   const [, setMetricsTick] = useState(0);
   const [geoOk, setGeoOk] = useState<boolean | null>(null);
+  /** Faux tant que le chrono n’a pas démarré sur le 1er point GPS (affichage « accrochage »). */
+  const [gpsClockLive, setGpsClockLive] = useState(false);
 
-  const startRef = useRef<number>(0);
+  /** 0 = chrono pas encore démarré (en attente du 1er fix). Sinon timestamp ms. */
+  const startRef = useRef(0);
   const watchRef = useRef<number | null>(null);
   const lastLatRef = useRef<number | null>(null);
   const lastLonRef = useRef<number | null>(null);
@@ -292,27 +307,64 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
     lastLatRef.current = null;
     lastLonRef.current = null;
     lastAnnouncedKmRef.current = 0;
-    const now = Date.now();
-    startRef.current = now;
-    lastKmCrossingMsRef.current = now;
+    startRef.current = 0;
+    lastKmCrossingMsRef.current = 0;
     setElapsedSec(0);
+    setGpsClockLive(false);
     setPhase("running");
     setGeoOk(null);
 
+    const armChronoOnFirstFix = () => {
+      if (startRef.current > 0) return;
+      const ts = Date.now();
+      startRef.current = ts;
+      lastKmCrossingMsRef.current = ts;
+      setGpsClockLive(true);
+    };
+
     tickRef.current = setInterval(() => {
-      setElapsedSec((Date.now() - startRef.current) / 1000);
+      const base = startRef.current;
+      if (base <= 0) {
+        setElapsedSec(0);
+      } else {
+        setElapsedSec((Date.now() - base) / 1000);
+      }
       setMetricsTick((n) => n + 1);
     }, 200);
+
+    /* Premier fix souvent plus rapide qu’en n’écoutant que watchPosition. */
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGeoOk(true);
+        const { latitude, longitude } = pos.coords;
+        if (lastLatRef.current == null) {
+          lastLatRef.current = latitude;
+          lastLonRef.current = longitude;
+        }
+        armChronoOnFirstFix();
+      },
+      () => {
+        /* watch ou prochaine tentative fournira la position */
+      },
+      GEO_SEED,
+    );
 
     watchRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         setGeoOk(true);
         const { latitude, longitude } = pos.coords;
+
+        if (lastLatRef.current == null || lastLonRef.current == null) {
+          lastLatRef.current = latitude;
+          lastLonRef.current = longitude;
+          armChronoOnFirstFix();
+          return;
+        }
+
         const prevLat = lastLatRef.current;
         const prevLon = lastLonRef.current;
         lastLatRef.current = latitude;
         lastLonRef.current = longitude;
-        if (prevLat == null || prevLon == null) return;
 
         let d = haversineM(prevLat, prevLon, latitude, longitude);
         if (d > 80) {
@@ -347,7 +399,7 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
         setGeoOk(false);
         setError(err.message || "Impossible d’accéder au GPS.");
       },
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 },
+      GEO_WATCH,
     );
   }, [targetKm]);
 
@@ -369,6 +421,7 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
     lastDistanceUiBucketRef.current = 0;
     setError("");
     setGeoOk(null);
+    setGpsClockLive(false);
   }, [cleanupWatch]);
 
   const showOfflineBanner = apiUnreachableAtLoad || !netOnline;
@@ -392,9 +445,9 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
           Course en direct
         </h2>
         <p className="mt-1 text-[11px] leading-relaxed text-white/40">
-          Position côté appareil (GPS). La distance affichée se met à jour tous les 10 mètres ; l’allure et la barre
-          d’objectif suivent la mesure continue. À chaque kilomètre : annonce vocale et projection 10 km. Garde l’onglet
-          ouvert pendant la sortie.
+          Position côté appareil (GPS). Un premier point est demandé tout de suite pour accrocher plus vite ; le chrono
+          démarre au premier signal GPS (pas pendant l’attente du fix). Distance affichée par pas d’1 m. À chaque km :
+          annonce vocale. Garde l’onglet ouvert pendant la sortie.
         </p>
       </div>
 
@@ -436,8 +489,15 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
                 Temps
               </p>
               <p className="mt-1 font-display text-3xl font-semibold tabular-nums text-white">
-                {formatClock(elapsedSec)}
+                {phase === "running" && !gpsClockLive
+                  ? "—"
+                  : formatClock(elapsedSec)}
               </p>
+              {phase === "running" && !gpsClockLive ? (
+                <p className="mt-1 text-[10px] text-white/40">
+                  Accrochage GPS — le chrono démarre au premier point reçu.
+                </p>
+              ) : null}
             </div>
             <div>
               <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
@@ -484,7 +544,7 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
             </p>
           ) : geoOk === true ? (
             <p className="text-[11px] text-white/35">
-              GPS actif — distance affichée par pas de 10 m, allure en continu.
+              GPS actif — points frais (pas de position mise en cache), distance par mètres, allure en continu.
             </p>
           ) : (
             <p className="text-[11px] text-white/35">Recherche de position…</p>
