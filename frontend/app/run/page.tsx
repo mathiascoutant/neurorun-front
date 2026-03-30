@@ -6,12 +6,14 @@ import { useEffect, useState } from 'react'
 import { LiveRunPanel } from '@/components/LiveRunPanel'
 import { Mark } from '@/components/Mark'
 import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
-import { fetchMe } from '@/lib/api'
+import { ApiError, fetchMe } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
+import { saveMeCache } from '@/lib/meCache'
 
 export default function RunPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
+  const [apiUnreachable, setApiUnreachable] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
@@ -23,15 +25,23 @@ export default function RunPage() {
     ;(async () => {
       try {
         const me = await fetchMe(token)
+        saveMeCache(me)
         if (!me.strava_linked) {
           router.replace('/link-strava/')
           return
         }
-      } catch {
-        router.replace('/login/')
-        return
+        setApiUnreachable(false)
+        setReady(true)
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) {
+          clearToken()
+          router.replace('/login/')
+          return
+        }
+        /* Réseau ou serveur indisponible : la course reste utilisable (GPS + calcul local, sans API). */
+        setApiUnreachable(true)
+        setReady(true)
       }
-      setReady(true)
     })()
   }, [router])
 
@@ -119,7 +129,7 @@ export default function RunPage() {
         </header>
 
         <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 pb-16">
-          <LiveRunPanel />
+          <LiveRunPanel apiUnreachableAtLoad={apiUnreachable} />
         </main>
       </div>
     </div>

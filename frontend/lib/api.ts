@@ -34,6 +34,17 @@ function apiErrorMessage(res: Response, text: string, data: unknown): string {
   return raw;
 }
 
+/** Erreur HTTP API avec statut (permet de distinguer 401 et panne réseau). */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export type MeUser = {
   id: string;
   email: string;
@@ -61,7 +72,7 @@ export async function api<T>(
     data = { error: text };
   }
   if (!res.ok) {
-    throw new Error(apiErrorMessage(res, text, data));
+    throw new ApiError(apiErrorMessage(res, text, data), res.status);
   }
   return data as T;
 }
