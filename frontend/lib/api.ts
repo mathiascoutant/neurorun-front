@@ -148,12 +148,31 @@ export async function checkoutSubscribe(
   });
 }
 
+export type SignupDayRow = { day: string; count: number };
+
+export type TopActiveUserRow = {
+  user_id: string;
+  email: string;
+  activity: number;
+  live_runs: number;
+  goals: number;
+  conversations: number;
+};
+
 export type AdminStats = {
   users_total: number;
   users_last_7d: number;
   users_plan_standard: number;
   users_plan_strava: number;
   users_plan_performance: number;
+  /** Inscriptions par jour (UTC), typiquement 30 jours */
+  signups_by_day?: SignupDayRow[];
+  top_active_users?: TopActiveUserRow[];
+  /** Revenu récurrent mensuel estimé (strava × prix + performance × prix) */
+  mrr_estimated_eur?: number;
+  prices_eur?: Record<string, number>;
+  subscribers_strava?: number;
+  subscribers_performance?: number;
 };
 
 export async function adminStats(token: string): Promise<AdminStats> {
@@ -199,6 +218,13 @@ export async function adminPatchUser(
     method: "PATCH",
     token,
     body: JSON.stringify(body),
+  });
+}
+
+export async function adminDeleteUser(token: string, id: string): Promise<void> {
+  await api<unknown>(`/api/admin/users/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    token,
   });
 }
 
