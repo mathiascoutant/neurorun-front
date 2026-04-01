@@ -22,7 +22,7 @@ type Msg = { role: 'user' | 'assistant'; text: string }
 const WELCOME: Msg = {
   role: 'assistant',
   text:
-    'NeuroRun : pose une question sur l’entraînement ou la course. Sans Strava, le coach répond comme une IA généraliste (conseils, structure, récup). Avec Strava associé, il peut aussi s’appuyer sur ton historique de sorties. Tes messages sont enregistrés dans cette conversation. Réponses brèves, en français.',
+    'NeuroRun : pose une question sur l’entraînement ou la course. Tu peux utiliser le coach sans Strava (conseils, structure, récup). Si tu associes Strava, il pourra aussi s’appuyer sur ton historique pour des repères plus précis. Tes messages sont enregistrés dans cette conversation. Réponses brèves, en français.',
 }
 
 function coachSuggestions(stravaLinked: boolean): string[] {
@@ -266,11 +266,11 @@ function ChatPageContent() {
       <div className="flex min-w-0 flex-1 flex-col">
         {!stravaLinked ? (
           <div className="border-b border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-[11px] leading-relaxed text-white/50">
-            <span className="font-medium text-white/65">Sans Strava</span>, le coach répond en mode généraliste.{' '}
+            <span className="font-medium text-white/65">Strava optionnel</span> — le coach fonctionne sans compte lié.{' '}
             <Link href="/link-strava/" className="text-brand-ice/90 underline decoration-white/15 underline-offset-2 hover:text-white">
               Associer Strava
             </Link>{' '}
-            pour qu’il s’appuie sur tes sorties réelles (volume, allure, historique).
+            ajoute ton historique (volume, allure) pour des réponses plus personnalisées.
           </div>
         ) : null}
         <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface-0/85 backdrop-blur-xl">

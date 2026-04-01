@@ -17,8 +17,9 @@ export function StravaLinkBanner({ className = '' }: Props) {
       role="status"
     >
       <p className="min-w-0 flex-[1_1_12rem] text-xs leading-snug text-white/85 sm:text-[13px]">
-        <span className="font-medium text-white">Strava non associé.</span>{' '}
-        Lie ton compte pour afficher tes sorties, prévisions et le coach sur tes données.
+        <span className="font-medium text-white">Strava (optionnel).</span>{' '}
+        Sans compte lié, l’app fonctionne quand même ; associer Strava enrichit tableaux de bord, prévisions et
+        contexte du coach avec tes sorties réelles.
       </p>
       <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         <Link

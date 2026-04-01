@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import type { Goal } from '@/lib/api'
 import { GoalTrainingCalendar } from '@/components/GoalTrainingCalendar'
@@ -491,10 +492,23 @@ export function GoalsPanel() {
                 {goalDeleteErr ? (
                   <p className="mt-3 text-sm text-red-200/90">{goalDeleteErr}</p>
                 ) : null}
-                {detail.plan_without_strava_data && stravaLinked === true ? (
-                  <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-2.5 text-xs leading-relaxed text-emerald-100/95">
-                    Strava est associé : tu peux écrire au coach pour <span className="font-medium text-white">adapter ton objectif ou le plan</span> selon tes vraies sorties (allure, volume, régularité).
-                  </div>
+                {detail.plan_without_strava_data ? (
+                  stravaLinked ? (
+                    <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-2.5 text-xs leading-relaxed text-emerald-100/95">
+                      Strava est associé : tu peux écrire au coach pour <span className="font-medium text-white">adapter ton objectif ou le plan</span> selon tes vraies sorties (allure, volume, régularité).
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2.5 text-xs leading-relaxed text-white/70">
+                      Ce plan s’appuie sur ton objectif (sans historique Strava).{' '}
+                      <Link
+                        href="/link-strava/"
+                        className="font-medium text-brand-ice/90 underline decoration-white/15 underline-offset-2 hover:text-white"
+                      >
+                        Associer Strava
+                      </Link>{' '}
+                      permet d’aligner conseils et calendrier sur tes sorties réelles.
+                    </div>
+                  )
                 ) : null}
                 <SimplePlanBody text={detail.plan} className="mt-5 min-w-0 flex-1" />
               </article>

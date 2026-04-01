@@ -25,8 +25,8 @@ export function AuthShell({
             Tes sorties. Ton rythme. Une IA qui lit entre les lignes.
           </h2>
           <p className="mt-4 text-sm leading-relaxed text-white/50">
-            Connecte Strava, puis dialogue avec un coach virtuel qui connaît tes dernières séances — sans
-            remplacer un pro de santé, mais pour ajuster charge et récup au quotidien.
+            Dialogue avec un coach virtuel dès l’inscription ; lie Strava quand tu veux pour qu’il s’appuie aussi sur
+            tes dernières séances — sans remplacer un pro de santé, mais pour ajuster charge et récup au quotidien.
           </p>
         </div>
         <p className="relative z-10 text-xs text-white/30">Inspiré de l&apos;énergie des apps de course — ton data reste lié à ton compte.</p>
