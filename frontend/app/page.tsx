@@ -4,8 +4,15 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mark } from '@/components/Mark'
-import { fetchMe } from '@/lib/api'
+import { fetchMe, fetchPublicOfferConfig } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
+
+const DEFAULT_STRAVA_EUR = 3.99
+const DEFAULT_PERF_EUR = 7.99
+
+function formatMonthlyEUR(n: number): string {
+  return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+}
 
 function CheckIcon({ className = '' }: { className?: string }) {
   return (
@@ -22,6 +29,26 @@ function CheckIcon({ className = '' }: { className?: string }) {
 export default function HomePage() {
   const router = useRouter()
   const [gate, setGate] = useState<'checking' | 'landing'>('checking')
+  const [priceStravaEur, setPriceStravaEur] = useState(DEFAULT_STRAVA_EUR)
+  const [pricePerfEur, setPricePerfEur] = useState(DEFAULT_PERF_EUR)
+
+  useEffect(() => {
+    let off = false
+    ;(async () => {
+      try {
+        const cfg = await fetchPublicOfferConfig()
+        if (off) return
+        const p = cfg.prices_eur ?? {}
+        if (typeof p.strava === 'number' && !Number.isNaN(p.strava)) setPriceStravaEur(p.strava)
+        if (typeof p.performance === 'number' && !Number.isNaN(p.performance)) setPricePerfEur(p.performance)
+      } catch {
+        /* garde les défauts si l’API est injoignable */
+      }
+    })()
+    return () => {
+      off = true
+    }
+  }, [])
 
   useEffect(() => {
     let off = false
@@ -130,7 +157,8 @@ export default function HomePage() {
             <p className="kicker text-brand-orange">Strava</p>
             <h2 className="mt-2 font-display text-xl font-semibold text-white">Strava connecté</h2>
             <p className="mt-1 text-3xl font-semibold tracking-tight text-white">
-              3,99 €<span className="text-base font-normal text-white/40"> / mois</span>
+              {formatMonthlyEUR(priceStravaEur)}
+              <span className="text-base font-normal text-white/40"> / mois</span>
             </p>
             <p className="mt-3 text-sm leading-relaxed text-white/45">
               Lie ton compte Strava : le coach s&apos;appuie sur tes sorties réelles pour des analyses plus pertinentes.
@@ -162,7 +190,8 @@ export default function HomePage() {
             <p className="kicker text-brand-ice/90">Performance</p>
             <h2 className="mt-2 font-display text-xl font-semibold text-white">IA + Strava + circuit</h2>
             <p className="mt-1 text-3xl font-semibold tracking-tight text-white">
-              7,99 €<span className="text-base font-normal text-white/40"> / mois</span>
+              {formatMonthlyEUR(pricePerfEur)}
+              <span className="text-base font-normal text-white/40"> / mois</span>
             </p>
             <p className="mt-3 text-sm leading-relaxed text-white/45">
               L&apos;expérience complète : coach IA avancé, données Strava et plans d&apos;entraînement sur circuit.
