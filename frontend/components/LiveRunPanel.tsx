@@ -185,6 +185,29 @@ const GEO_WATCH: PositionOptions = {
   timeout: 20000,
 };
 
+/** Vitesse impliquée absurde pour la course → segment ignoré (anti-saut GPS). */
+const MAX_IMPLIED_SPEED_KMH = 50;
+/** Pause auto : vitesse lissée sous ce seuil → compteur « temps en mouvement » figé. */
+const PAUSE_SPEED_KMH = 1;
+const RESUME_SPEED_KMH = 1.6;
+const PAUSE_AFTER_SLOW_SEC = 5;
+const SPEED_SMOOTH_WINDOW = 5;
+
+function pushSpeedSample(
+  buf: number[],
+  v: number,
+  maxLen: number,
+): number[] {
+  const next = [...buf, v];
+  if (next.length > maxLen) next.splice(0, next.length - maxLen);
+  return next;
+}
+
+function mean(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
 function useNavigatorOnline(): boolean {
   const [online, setOnline] = useState(
     () => typeof navigator !== "undefined" && navigator.onLine,
@@ -212,7 +235,10 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
   const [targetKm, setTargetKm] = useState("10");
   const [error, setError] = useState("");
 
+  /** Temps en mouvement (pause auto), précision delta réel entre ticks. */
   const [elapsedSec, setElapsedSec] = useState(0);
+  /** Temps écoulé (horloge) depuis le premier timestamp GPS — comme « temps total » Strava. */
+  const [wallSec, setWallSec] = useState(0);
   /** Distance affichée (m), mise à jour par paliers de DISTANCE_UI_STEP_M pendant la course. */
   const [distanceM, setDistanceM] = useState(0);
   /** Incrémenté sur le tick chrono pour relire accMRef (allure / % objectif lissés). */
@@ -220,9 +246,17 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
   const [geoOk, setGeoOk] = useState<boolean | null>(null);
   /** Faux tant que le chrono n’a pas démarré sur le 1er point GPS (affichage « accrochage »). */
   const [gpsClockLive, setGpsClockLive] = useState(false);
+  const [autoPaused, setAutoPaused] = useState(false);
 
-  /** 0 = chrono pas encore démarré (en attente du 1er fix). Sinon timestamp ms. */
-  const startRef = useRef(0);
+  /** 0 = chrono pas encore démarré. Sinon = timestamp du 1er fix (`position.timestamp`, pas Date.now). */
+  const gpsStartTsMsRef = useRef(0);
+  const movingSecRef = useRef(0);
+  const lastTickMsRef = useRef(0);
+  const pausedRef = useRef(false);
+  const speedBufRef = useRef<number[]>([]);
+  const slowSinceMsRef = useRef<number | null>(null);
+  const lastTsRef = useRef<number | null>(null);
+
   const watchRef = useRef<number | null>(null);
   const lastLatRef = useRef<number | null>(null);
   const lastLonRef = useRef<number | null>(null);
@@ -307,27 +341,66 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
     lastLatRef.current = null;
     lastLonRef.current = null;
     lastAnnouncedKmRef.current = 0;
-    startRef.current = 0;
+    gpsStartTsMsRef.current = 0;
+    movingSecRef.current = 0;
+    lastTickMsRef.current = 0;
+    pausedRef.current = false;
+    speedBufRef.current = [];
+    slowSinceMsRef.current = null;
+    lastTsRef.current = null;
     lastKmCrossingMsRef.current = 0;
     setElapsedSec(0);
+    setWallSec(0);
+    setAutoPaused(false);
     setGpsClockLive(false);
     setPhase("running");
     setGeoOk(null);
 
-    const armChronoOnFirstFix = () => {
-      if (startRef.current > 0) return;
-      const ts = Date.now();
-      startRef.current = ts;
+    const armChronoOnFirstFix = (pos: GeolocationPosition) => {
+      if (gpsStartTsMsRef.current > 0) return;
+      const ts = pos.timestamp;
+      gpsStartTsMsRef.current = ts;
       lastKmCrossingMsRef.current = ts;
+      lastTickMsRef.current = Date.now();
+      movingSecRef.current = 0;
       setGpsClockLive(true);
     };
 
+    const applyPauseFromSmoothed = (smoothedKmh: number, tsMs: number) => {
+      if (speedBufRef.current.length < 2) return;
+      let nextPaused = pausedRef.current;
+      if (smoothedKmh < PAUSE_SPEED_KMH) {
+        if (slowSinceMsRef.current == null) slowSinceMsRef.current = tsMs;
+        else if (tsMs - slowSinceMsRef.current >= PAUSE_AFTER_SLOW_SEC * 1000) {
+          nextPaused = true;
+        }
+      } else if (smoothedKmh > RESUME_SPEED_KMH) {
+        nextPaused = false;
+        slowSinceMsRef.current = null;
+      }
+      if (nextPaused !== pausedRef.current) {
+        pausedRef.current = nextPaused;
+        setAutoPaused(nextPaused);
+      }
+    };
+
     tickRef.current = setInterval(() => {
-      const base = startRef.current;
+      const base = gpsStartTsMsRef.current;
+      const now = Date.now();
       if (base <= 0) {
         setElapsedSec(0);
+        setWallSec(0);
       } else {
-        setElapsedSec((Date.now() - base) / 1000);
+        const lastT = lastTickMsRef.current;
+        if (lastT > 0) {
+          const dt = (now - lastT) / 1000;
+          if (dt > 0 && dt < 5 && !pausedRef.current) {
+            movingSecRef.current += dt;
+          }
+        }
+        lastTickMsRef.current = now;
+        setElapsedSec(movingSecRef.current);
+        setWallSec(Math.max(0, (now - base) / 1000));
       }
       setMetricsTick((n) => n + 1);
     }, 200);
@@ -341,7 +414,8 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
           lastLatRef.current = latitude;
           lastLonRef.current = longitude;
         }
-        armChronoOnFirstFix();
+        armChronoOnFirstFix(pos);
+        if (lastTsRef.current == null) lastTsRef.current = pos.timestamp;
       },
       () => {
         /* watch ou prochaine tentative fournira la position */
@@ -353,25 +427,60 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
       (pos) => {
         setGeoOk(true);
         const { latitude, longitude } = pos.coords;
+        const tsMs = pos.timestamp;
 
         if (lastLatRef.current == null || lastLonRef.current == null) {
           lastLatRef.current = latitude;
           lastLonRef.current = longitude;
-          armChronoOnFirstFix();
+          armChronoOnFirstFix(pos);
+          if (lastTsRef.current == null) lastTsRef.current = tsMs;
           return;
         }
 
         const prevLat = lastLatRef.current;
         const prevLon = lastLonRef.current;
-        lastLatRef.current = latitude;
-        lastLonRef.current = longitude;
+        const prevTs = lastTsRef.current;
 
         let d = haversineM(prevLat, prevLon, latitude, longitude);
         if (d > 80) {
-          /* probable saut GPS : on ignore le segment */
           return;
         }
-        if (d < 0.5) return;
+
+        const dtSec =
+          prevTs != null ? Math.max(0, (tsMs - prevTs) / 1000) : 0;
+
+        if (d < 0.5) {
+          lastTsRef.current = tsMs;
+          speedBufRef.current = pushSpeedSample(
+            speedBufRef.current,
+            0,
+            SPEED_SMOOTH_WINDOW,
+          );
+          applyPauseFromSmoothed(mean(speedBufRef.current), tsMs);
+          return;
+        }
+
+        if (prevTs == null || dtSec < 1e-6) {
+          lastTsRef.current = tsMs;
+          return;
+        }
+
+        const impliedKmh = (d / 1000 / dtSec) * 3600;
+        if (impliedKmh > MAX_IMPLIED_SPEED_KMH) {
+          return;
+        }
+
+        speedBufRef.current = pushSpeedSample(
+          speedBufRef.current,
+          impliedKmh,
+          SPEED_SMOOTH_WINDOW,
+        );
+        applyPauseFromSmoothed(mean(speedBufRef.current), tsMs);
+
+        lastLatRef.current = latitude;
+        lastLonRef.current = longitude;
+        lastTsRef.current = tsMs;
+
         accMRef.current += d;
 
         const bucket = Math.floor(accMRef.current / DISTANCE_UI_STEP_M);
@@ -381,18 +490,18 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
         }
 
         const km = accMRef.current / 1000;
-        const t = Date.now();
         const newFloor = Math.floor(km);
         const crossed = newFloor - lastAnnouncedKmRef.current;
         if (crossed > 0) {
-          const totalSplitSec = (t - lastKmCrossingMsRef.current) / 1000;
+          const totalSplitSec =
+            (tsMs - lastKmCrossingMsRef.current) / 1000;
           const perKmSec = Math.max(0.1, totalSplitSec / crossed);
           for (let i = 0; i < crossed; i++) {
             lastAnnouncedKmRef.current += 1;
             const k = lastAnnouncedKmRef.current;
             speakKm(k, perKmSec, perKmSec * 10);
           }
-          lastKmCrossingMsRef.current = t;
+          lastKmCrossingMsRef.current = tsMs;
         }
       },
       (err) => {
@@ -404,6 +513,16 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
   }, [targetKm]);
 
   const stopRun = useCallback(() => {
+    const base = gpsStartTsMsRef.current;
+    const now = Date.now();
+    if (base > 0 && lastTickMsRef.current > 0) {
+      const dt = (now - lastTickMsRef.current) / 1000;
+      if (dt > 0 && dt < 5 && !pausedRef.current) {
+        movingSecRef.current += dt;
+      }
+      setElapsedSec(movingSecRef.current);
+      setWallSec(Math.max(0, (now - base) / 1000));
+    }
     cleanupWatch();
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -416,9 +535,15 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
     cleanupWatch();
     setPhase("setup");
     setElapsedSec(0);
+    setWallSec(0);
     setDistanceM(0);
     accMRef.current = 0;
     lastDistanceUiBucketRef.current = 0;
+    gpsStartTsMsRef.current = 0;
+    movingSecRef.current = 0;
+    pausedRef.current = false;
+    speedBufRef.current = [];
+    setAutoPaused(false);
     setError("");
     setGeoOk(null);
     setGpsClockLive(false);
@@ -445,9 +570,11 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
           Course en direct
         </h2>
         <p className="mt-1 text-[11px] leading-relaxed text-white/40">
-          Position côté appareil (GPS). Un premier point est demandé tout de suite pour accrocher plus vite ; le chrono
-          démarre au premier signal GPS (pas pendant l’attente du fix). Distance affichée par pas d’1 m. À chaque km :
-          annonce vocale. Garde l’onglet ouvert pendant la sortie.
+          Le départ du chrono est calé sur le{" "}
+          <strong className="font-medium text-white/55">timestamp GPS</strong> du premier point (comme une trace GPX).
+          Temps affiché = temps en mouvement avec pause auto (environ 5 s sous 1 km/h). Segments absurdes filtrés
+          (vitesse impliquée au-delà de 50 km/h). Distance par pas d’1 m, annonce à chaque km. Garde l’onglet ouvert
+          pendant la sortie.
         </p>
       </div>
 
@@ -486,7 +613,7 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
-                Temps
+                Temps (en mouvement)
               </p>
               <p className="mt-1 font-display text-3xl font-semibold tabular-nums text-white">
                 {phase === "running" && !gpsClockLive
@@ -497,7 +624,18 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
                 <p className="mt-1 text-[10px] text-white/40">
                   Accrochage GPS — le chrono démarre au premier point reçu.
                 </p>
-              ) : null}
+              ) : phase === "running" && gpsClockLive ? (
+                <p className="mt-1 text-[10px] text-white/40">
+                  Total horloge : {formatClock(wallSec)}
+                  {autoPaused ? (
+                    <span className="ml-1.5 text-amber-200/90">· pause auto</span>
+                  ) : null}
+                </p>
+              ) : (
+                <p className="mt-1 text-[10px] text-white/40">
+                  Total horloge : {formatClock(wallSec)}
+                </p>
+              )}
             </div>
             <div>
               <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
@@ -544,7 +682,8 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
             </p>
           ) : geoOk === true ? (
             <p className="text-[11px] text-white/35">
-              GPS actif — points frais (pas de position mise en cache), distance par mètres, allure en continu.
+              GPS actif — timestamps des points pour les splits, vitesse lissée (moyenne glissante) pour la pause auto,
+              chrono avec deltas réels entre ticks.
             </p>
           ) : (
             <p className="text-[11px] text-white/35">Recherche de position…</p>
