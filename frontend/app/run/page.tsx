@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { LiveRunHistory } from '@/components/LiveRunHistory'
 import { LiveRunPanel } from '@/components/LiveRunPanel'
 import { StravaLinkBanner } from '@/components/StravaLinkBanner'
 import { Mark } from '@/components/Mark'
@@ -18,6 +19,10 @@ export default function RunPage() {
   const [stravaLinked, setStravaLinked] = useState<boolean | null>(null)
   const [apiUnreachable, setApiUnreachable] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [historyTick, setHistoryTick] = useState(0)
+  const onRunSaved = useCallback(() => {
+    setHistoryTick((n) => n + 1)
+  }, [])
 
   useEffect(() => {
     const token = getToken()
@@ -130,8 +135,15 @@ export default function RunPage() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 pb-16">
-          <LiveRunPanel apiUnreachableAtLoad={apiUnreachable} />
+        <main className="mx-auto w-full max-w-3xl flex-1 space-y-8 px-4 py-8 pb-16">
+          <LiveRunPanel
+            apiUnreachableAtLoad={apiUnreachable}
+            onRunSaved={onRunSaved}
+          />
+          <LiveRunHistory
+            apiUnreachableAtLoad={apiUnreachable}
+            refreshTrigger={historyTick}
+          />
         </main>
       </div>
     </div>

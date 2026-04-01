@@ -273,9 +273,14 @@ function useNavigatorOnline(): boolean {
 type Props = {
   /** L’API n’a pas répondu au chargement : la suite ne dépend pas du réseau. */
   apiUnreachableAtLoad?: boolean;
+  /** Appelé quand la sortie est enregistrée côté serveur (rafraîchir l’historique). */
+  onRunSaved?: () => void;
 };
 
-export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
+export function LiveRunPanel({
+  apiUnreachableAtLoad = false,
+  onRunSaved,
+}: Props) {
   const netOnline = useNavigatorOnline();
   const [phase, setPhase] = useState<RunPhase>("setup");
   const [targetKm, setTargetKm] = useState("10");
@@ -642,9 +647,12 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
 
     setServerSave("saving");
     void postLiveRun(token, payload)
-      .then(() => setServerSave("saved"))
+      .then(() => {
+        setServerSave("saved");
+        onRunSaved?.();
+      })
       .catch(() => setServerSave("error"));
-  }, [cleanupWatch, targetKm]);
+  }, [cleanupWatch, targetKm, onRunSaved]);
 
   const resetRun = useCallback(() => {
     cleanupWatch();

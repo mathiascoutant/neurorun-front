@@ -545,8 +545,33 @@ export async function listLiveRuns(token: string) {
   return d.runs ?? [];
 }
 
-export async function getLiveRun(token: string, id: string) {
-  return api<Record<string, unknown>>(
+export type LiveRunDetail = {
+  id: string;
+  created_at: string;
+  target_km: number;
+  distance_m: number;
+  moving_sec: number;
+  wall_sec: number;
+  gps_start_ts_ms: number;
+  gps_end_ts_ms: number;
+  avg_pace_sec_per_km: number;
+  max_implied_speed_kmh?: number;
+  splits: LiveRunSplit[];
+  track_points: LiveRunTrackPoint[];
+  client_version?: string;
+  user_agent?: string;
+  navigator_language?: string;
+  screen_w?: number;
+  screen_h?: number;
+  online_at_end?: boolean;
+  auto_pause_detected?: boolean;
+};
+
+export async function getLiveRun(
+  token: string,
+  id: string,
+): Promise<LiveRunDetail> {
+  return api<LiveRunDetail>(
     `/api/live-runs/${encodeURIComponent(id)}`,
     { token },
   );
