@@ -17,10 +17,9 @@ export default function GatePage() {
         return
       }
       try {
-        const me = await fetchMe(token)
+        await fetchMe(token)
         if (off) return
-        if (!me.strava_linked) router.replace('/link-strava/')
-        else router.replace('/dashboard/')
+        router.replace('/dashboard/')
       } catch {
         if (!off) router.replace('/login/')
       }

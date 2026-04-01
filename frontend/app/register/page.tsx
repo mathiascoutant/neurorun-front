@@ -21,7 +21,7 @@ export default function RegisterPage() {
     try {
       const res = await register(email, password)
       setToken(res.token)
-      router.push('/link-strava/')
+      router.push('/dashboard/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur')
     } finally {
@@ -33,7 +33,7 @@ export default function RegisterPage() {
     <AuthShell
       kicker="Onboarding"
       title="Créer ton compte"
-      subtitle="Ensuite, une seule étape : autoriser la lecture de tes activités Strava."
+      subtitle="Tu pourras lier Strava depuis l’accueil quand tu veux."
       footer={
         <p className="text-center text-sm text-white/45">
           Déjà inscrit ?{' '}

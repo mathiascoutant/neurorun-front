@@ -17,6 +17,7 @@ import {
   YAxis,
 } from 'recharts'
 import { Mark } from '@/components/Mark'
+import { StravaLinkBanner } from '@/components/StravaLinkBanner'
 import {
   asArray,
   fetchMe,
@@ -131,6 +132,7 @@ function PaceBlock({
 export function RunDashboard() {
   const router = useRouter()
   const [authReady, setAuthReady] = useState(false)
+  const [stravaLinked, setStravaLinked] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [period, setPeriod] = useState<StravaDashboardPeriod>('30d')
   const [data, setData] = useState<StravaDashboard | null>(null)
@@ -146,11 +148,9 @@ export function RunDashboard() {
     ;(async () => {
       try {
         const me = await fetchMe(token)
-        if (!me.strava_linked) {
-          router.replace('/link-strava/')
-          return
-        }
+        setStravaLinked(me.strava_linked)
         setAuthReady(true)
+        if (!me.strava_linked) setLoading(false)
       } catch {
         router.replace('/login/')
       }
@@ -159,7 +159,7 @@ export function RunDashboard() {
 
   const load = useCallback(async () => {
     const token = getToken()
-    if (!token || !authReady) return
+    if (!token || !authReady || !stravaLinked) return
     setLoading(true)
     setErr('')
     try {
@@ -171,7 +171,7 @@ export function RunDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [period, authReady])
+  }, [period, authReady, stravaLinked])
 
   useEffect(() => {
     if (!authReady) return
@@ -238,6 +238,7 @@ export function RunDashboard() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {!stravaLinked ? <StravaLinkBanner /> : null}
         <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface-0/85 backdrop-blur-xl">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -269,6 +270,7 @@ export function RunDashboard() {
         </header>
 
         <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-8 pb-16">
+        {stravaLinked ? (
         <div className="flex flex-wrap gap-2">
           {PERIODS.map((p) => (
             <button
@@ -285,6 +287,7 @@ export function RunDashboard() {
             </button>
           ))}
         </div>
+        ) : null}
 
         {err ? (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
@@ -292,7 +295,21 @@ export function RunDashboard() {
           </div>
         ) : null}
 
-        {loading ? <p className="text-sm text-white/45">Chargement des sorties…</p> : null}
+        {stravaLinked && loading ? <p className="text-sm text-white/45">Chargement des sorties…</p> : null}
+
+        {!stravaLinked && !loading ? (
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center">
+            <p className="text-sm text-white/70">
+              Les graphiques et statistiques apparaîtront ici une fois Strava associé.
+            </p>
+            <Link
+              href="/link-strava/"
+              className="btn-brand mt-4 inline-flex px-5 py-2.5 text-sm"
+            >
+              Associer Strava
+            </Link>
+          </div>
+        ) : null}
 
         {!loading && data ? (
           <>
