@@ -71,11 +71,11 @@ export default function AdminPage() {
           setStats(s)
         } else if (tab === 'users') {
           const r = await adminListUsers(t, 0, 80)
-          setUsers(r.users)
+          setUsers(r.users ?? [])
           setUsersTotal(r.total)
         } else if (tab === 'promos') {
           const r = await adminListPromos(t)
-          setPromos(r.promo_codes)
+          setPromos(r.promo_codes ?? [])
         } else if (tab === 'offers') {
           const c = await adminGetOfferConfig(t)
           setOfferCfg(c)
@@ -223,7 +223,7 @@ export default function AdminPage() {
                 const t = getToken()
                 if (!t) return
                 const r = await adminListPromos(t)
-                setPromos(r.promo_codes)
+                setPromos(r.promo_codes ?? [])
               }}
             />
             <div className="panel overflow-x-auto">
