@@ -1,4 +1,4 @@
-import type { ConversationListItem } from '@/lib/api'
+import type { ConversationListItem, MeCapabilities } from '@/lib/api'
 import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
 
 export type AppSection = 'chat' | 'goals'
@@ -15,6 +15,8 @@ type Props = {
   onSuggestion: (text: string) => void
   disabled: boolean
   onCloseMobile?: () => void
+  capabilities?: MeCapabilities
+  isAdmin?: boolean
 }
 
 export function NeuroRunSidebar({
@@ -28,6 +30,8 @@ export function NeuroRunSidebar({
   onSuggestion,
   disabled,
   onCloseMobile,
+  capabilities,
+  isAdmin,
 }: Props) {
   const conv = Array.isArray(conversations) ? conversations : []
   const sugg = Array.isArray(suggestions) ? suggestions : []
@@ -35,7 +39,12 @@ export function NeuroRunSidebar({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 p-4">
-      <MemberPrimaryNav active={navActive} onNavigate={onCloseMobile} />
+      <MemberPrimaryNav
+        active={navActive}
+        onNavigate={onCloseMobile}
+        capabilities={capabilities}
+        isAdmin={isAdmin}
+      />
 
       {section === 'chat' ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3 border-t border-white/[0.06] pt-4">

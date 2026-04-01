@@ -8,13 +8,14 @@ import { LiveRunPanel } from '@/components/LiveRunPanel'
 import { StravaLinkBanner } from '@/components/StravaLinkBanner'
 import { Mark } from '@/components/Mark'
 import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
-import { ApiError, fetchMe } from '@/lib/api'
+import { ApiError, fetchMe, type MeUser } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 import { saveMeCache } from '@/lib/meCache'
 
 export default function RunPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
+  const [me, setMe] = useState<MeUser | null>(null)
   /** `null` = profil inconnu (API injoignable), pas de bannière Strava. */
   const [stravaLinked, setStravaLinked] = useState<boolean | null>(null)
   const [apiUnreachable, setApiUnreachable] = useState(false)
@@ -32,9 +33,10 @@ export default function RunPage() {
     }
     ;(async () => {
       try {
-        const me = await fetchMe(token)
-        saveMeCache(me)
-        setStravaLinked(me.strava_linked)
+        const u = await fetchMe(token)
+        setMe(u)
+        saveMeCache(u)
+        setStravaLinked(u.strava_linked)
         setApiUnreachable(false)
         setReady(true)
       } catch (e) {
@@ -73,7 +75,11 @@ export default function RunPage() {
           </Link>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          <MemberPrimaryNav active="run" />
+          <MemberPrimaryNav
+            active="run"
+            capabilities={me?.capabilities}
+            isAdmin={me?.role === 'admin'}
+          />
         </div>
       </aside>
 
@@ -98,12 +104,17 @@ export default function RunPage() {
           </button>
         </div>
         <div className="p-2">
-          <MemberPrimaryNav active="run" onNavigate={() => setSidebarOpen(false)} />
+          <MemberPrimaryNav
+            active="run"
+            onNavigate={() => setSidebarOpen(false)}
+            capabilities={me?.capabilities}
+            isAdmin={me?.role === 'admin'}
+          />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {stravaLinked === false ? <StravaLinkBanner /> : null}
+        {stravaLinked === false && me?.capabilities?.strava_dashboard !== false ? <StravaLinkBanner /> : null}
         <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface-0/85 backdrop-blur-xl">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">

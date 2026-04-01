@@ -20,6 +20,7 @@ function LinkStravaContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [mobile, setMobile] = useState(false);
+  const [stravaAllowed, setStravaAllowed] = useState(true);
   const qErr = params.get("error");
 
   useEffect(() => {
@@ -30,6 +31,12 @@ function LinkStravaContent() {
     if (qErr === "config") {
       setError(
         "L'API n'expose pas Strava : remplis STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET et STRAVA_REDIRECT_URI côté serveur, puis redémarre.",
+      );
+      return;
+    }
+    if (qErr === "forbidden") {
+      setError(
+        "Strava n’est pas inclus dans ton offre actuelle. Mets à niveau ton abonnement depuis l’accueil ou contacte un administrateur.",
       );
       return;
     }
@@ -49,6 +56,10 @@ function LinkStravaContent() {
     (async () => {
       try {
         const me = await fetchMe(token);
+        if (me.capabilities?.strava_dashboard === false) {
+          setStravaAllowed(false);
+          return;
+        }
         if (me.strava_linked) router.replace("/dashboard/");
       } catch {
         router.replace("/login/");
@@ -59,6 +70,7 @@ function LinkStravaContent() {
   async function connect() {
     const token = getToken();
     if (!token) return;
+    if (!stravaAllowed) return;
     setError("");
     setLoading(true);
     try {
@@ -104,13 +116,20 @@ function LinkStravaContent() {
             </div>
           ) : null}
 
-          {mobile ? (
+          {!stravaAllowed ? (
+            <p className="text-sm leading-relaxed text-white/60">
+              La synchronisation Strava n’est pas activée pour ton offre. Choisis une offre incluant Strava sur la page
+              d’accueil ou demande à un administrateur.
+            </p>
+          ) : null}
+
+          {stravaAllowed && mobile ? (
             <p className="mb-6 text-xs leading-relaxed text-white/45">
               Sur téléphone, tu seras envoyé vers Strava : utilise de préférence <strong className="text-white/60">Safari</strong> ou <strong className="text-white/60">Chrome</strong>. Si Strava propose d’ouvrir <strong className="text-white/60">l’application</strong>, tu peux accepter pour te connecter plus facilement.
             </p>
           ) : null}
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className={`flex flex-col gap-3 sm:flex-row sm:items-center ${!stravaAllowed ? "hidden" : ""}`}>
             <button
               type="button"
               className="btn-brand flex-1 sm:flex-none sm:px-10"

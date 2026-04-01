@@ -1,14 +1,21 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { FormEvent, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { FormEvent, Suspense, useState } from 'react'
 import { AuthShell } from '@/components/auth/AuthShell'
 import { register } from '@/lib/api'
 import { setToken } from '@/lib/auth'
 
-export default function RegisterPage() {
+function safeNext(raw: string | null): string {
+  if (!raw || !raw.startsWith('/')) return '/dashboard/'
+  if (raw.startsWith('//')) return '/dashboard/'
+  return raw
+}
+
+function RegisterForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -21,7 +28,7 @@ export default function RegisterPage() {
     try {
       const res = await register(email, password)
       setToken(res.token)
-      router.push('/dashboard/')
+      router.push(safeNext(searchParams.get('next')))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur')
     } finally {
@@ -66,15 +73,28 @@ export default function RegisterPage() {
             required
             minLength={8}
           />
-          <p className="mt-1.5 text-xs text-white/35">Minimum 8 caractères</p>
         </div>
         {error ? (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-100">{error}</div>
         ) : null}
         <button type="submit" className="btn-brand w-full" disabled={loading}>
-          {loading ? 'Création…' : "S'inscrire"}
+          {loading ? 'Création…' : 'S’inscrire'}
         </button>
       </form>
     </AuthShell>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-2xl border-2 border-brand-orange/30 border-t-brand-orange" />
+        </main>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
   )
 }

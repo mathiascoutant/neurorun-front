@@ -1,14 +1,21 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { FormEvent, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { FormEvent, Suspense, useState } from 'react'
 import { AuthShell } from '@/components/auth/AuthShell'
 import { login } from '@/lib/api'
 import { setToken } from '@/lib/auth'
 
-export default function LoginPage() {
+function safeNext(raw: string | null): string {
+  if (!raw || !raw.startsWith('/')) return '/dashboard/'
+  if (raw.startsWith('//')) return '/dashboard/'
+  return raw
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -21,7 +28,7 @@ export default function LoginPage() {
     try {
       const res = await login(email, password)
       setToken(res.token)
-      router.push('/dashboard/')
+      router.push(safeNext(searchParams.get('next')))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur')
     } finally {
@@ -75,5 +82,19 @@ export default function LoginPage() {
         </button>
       </form>
     </AuthShell>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-2xl border-2 border-brand-orange/30 border-t-brand-orange" />
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   )
 }

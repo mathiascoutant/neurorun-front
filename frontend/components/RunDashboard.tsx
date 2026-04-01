@@ -22,6 +22,7 @@ import {
   asArray,
   fetchMe,
   fetchStravaDashboard,
+  type MeUser,
   type StravaDashboard,
   type StravaDashboardPeriod,
   type StravaPacePoint,
@@ -132,12 +133,15 @@ function PaceBlock({
 export function RunDashboard() {
   const router = useRouter()
   const [authReady, setAuthReady] = useState(false)
+  const [me, setMe] = useState<MeUser | null>(null)
   const [stravaLinked, setStravaLinked] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [period, setPeriod] = useState<StravaDashboardPeriod>('30d')
   const [data, setData] = useState<StravaDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
+
+  const stravaOffer = me?.capabilities?.strava_dashboard !== false
 
   useEffect(() => {
     const token = getToken()
@@ -147,10 +151,11 @@ export function RunDashboard() {
     }
     ;(async () => {
       try {
-        const me = await fetchMe(token)
-        setStravaLinked(me.strava_linked)
+        const u = await fetchMe(token)
+        setMe(u)
+        setStravaLinked(u.strava_linked)
         setAuthReady(true)
-        if (!me.strava_linked) setLoading(false)
+        if (!u.strava_linked) setLoading(false)
       } catch {
         router.replace('/login/')
       }
@@ -159,7 +164,7 @@ export function RunDashboard() {
 
   const load = useCallback(async () => {
     const token = getToken()
-    if (!token || !authReady || !stravaLinked) return
+    if (!token || !authReady || !stravaLinked || !stravaOffer) return
     setLoading(true)
     setErr('')
     try {
@@ -171,7 +176,7 @@ export function RunDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [period, authReady, stravaLinked])
+  }, [period, authReady, stravaLinked, stravaOffer])
 
   useEffect(() => {
     if (!authReady) return
@@ -183,7 +188,7 @@ export function RunDashboard() {
     router.push('/login/')
   }
 
-  if (!authReady) {
+  if (!authReady || !me) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <div className="h-12 w-12 animate-spin rounded-2xl border-2 border-brand-orange/30 border-t-brand-orange" />
@@ -208,7 +213,11 @@ export function RunDashboard() {
           </Link>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          <MemberPrimaryNav active="dashboard" />
+          <MemberPrimaryNav
+            active="dashboard"
+            capabilities={me.capabilities}
+            isAdmin={me.role === 'admin'}
+          />
         </div>
       </aside>
 
@@ -233,12 +242,17 @@ export function RunDashboard() {
           </button>
         </div>
         <div className="p-2">
-          <MemberPrimaryNav active="dashboard" onNavigate={() => setSidebarOpen(false)} />
+          <MemberPrimaryNav
+            active="dashboard"
+            onNavigate={() => setSidebarOpen(false)}
+            capabilities={me.capabilities}
+            isAdmin={me.role === 'admin'}
+          />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {!stravaLinked ? <StravaLinkBanner /> : null}
+        {!stravaLinked && stravaOffer ? <StravaLinkBanner /> : null}
         <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface-0/85 backdrop-blur-xl">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -259,9 +273,11 @@ export function RunDashboard() {
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <Link href="/link-strava/" className="btn-quiet hidden py-2 text-xs sm:inline-flex">
-                Strava
-              </Link>
+              {stravaOffer ? (
+                <Link href="/link-strava/" className="btn-quiet hidden py-2 text-xs sm:inline-flex">
+                  Strava
+                </Link>
+              ) : null}
               <button type="button" className="btn-quiet py-2 text-xs" onClick={logout}>
                 Sortir
               </button>
@@ -270,7 +286,7 @@ export function RunDashboard() {
         </header>
 
         <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-8 pb-16">
-        {stravaLinked ? (
+        {stravaLinked && stravaOffer ? (
         <div className="flex flex-wrap gap-2">
           {PERIODS.map((p) => (
             <button
@@ -297,7 +313,7 @@ export function RunDashboard() {
 
         {stravaLinked && loading ? <p className="text-sm text-white/45">Chargement des sorties…</p> : null}
 
-        {!stravaLinked && !loading ? (
+        {!stravaLinked && !loading && stravaOffer ? (
           <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center">
             <p className="text-sm text-white/70">
               Les graphiques et statistiques apparaîtront ici une fois Strava associé.
@@ -307,6 +323,18 @@ export function RunDashboard() {
               className="btn-brand mt-4 inline-flex px-5 py-2.5 text-sm"
             >
               Associer Strava
+            </Link>
+          </div>
+        ) : null}
+
+        {!stravaOffer && !loading ? (
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center">
+            <p className="text-sm text-white/70">
+              Strava et les tableaux liés ne sont pas activés pour ton offre actuelle. Passe à une offre supérieure ou
+              contacte un administrateur.
+            </p>
+            <Link href="/" className="btn-quiet mt-4 inline-flex px-5 py-2.5 text-sm">
+              Voir les offres
             </Link>
           </div>
         ) : null}

@@ -14,6 +14,7 @@ import {
   getConversation,
   listConversations,
   type ConversationListItem,
+  type MeUser,
 } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 import { saveMeCache } from '@/lib/meCache'
@@ -61,6 +62,7 @@ function ChatPageContent() {
   const searchParams = useSearchParams()
   const section: AppSection = searchParams.get('section') === 'goals' ? 'goals' : 'chat'
   const [ready, setReady] = useState(false)
+  const [me, setMe] = useState<MeUser | null>(null)
   const [stravaLinked, setStravaLinked] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
@@ -89,9 +91,10 @@ function ChatPageContent() {
     }
     ;(async () => {
       try {
-        const me = await fetchMe(token)
-        saveMeCache(me)
-        setStravaLinked(me.strava_linked)
+        const u = await fetchMe(token)
+        setMe(u)
+        saveMeCache(u)
+        setStravaLinked(u.strava_linked)
       } catch {
         router.replace('/login/')
         return
@@ -127,8 +130,20 @@ function ChatPageContent() {
   }, [router])
 
   useEffect(() => {
+    if (!me) return
+    if (section === 'goals' && me.capabilities?.goals === false) {
+      router.replace('/chat/')
+    }
+  }, [me, section, router])
+
+  useEffect(() => {
     listEnd.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading, section])
+  }, [messages, loading, section, me])
+
+  const showGoals = me?.capabilities?.goals !== false
+  const showCoach = me?.capabilities?.coach_chat !== false
+  const stravaOffer = me?.capabilities?.strava_dashboard !== false
+  const effectiveSection: AppSection = section === 'goals' && !showGoals ? 'chat' : section
 
   async function handleSelectConversation(id: string) {
     const token = getToken()
@@ -253,7 +268,7 @@ function ChatPageContent() {
     router.push('/login/')
   }
 
-  if (!ready) {
+  if (!ready || !me) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <div className="h-12 w-12 animate-spin rounded-2xl border-2 border-brand-orange/30 border-t-brand-orange" />
@@ -269,7 +284,7 @@ function ChatPageContent() {
           <Mark compact />
         </div>
         <NeuroRunSidebar
-          section={section}
+          section={effectiveSection}
           conversations={conversations}
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
@@ -278,6 +293,8 @@ function ChatPageContent() {
           suggestions={coachSuggestions(stravaLinked)}
           onSuggestion={send}
           disabled={loading}
+          capabilities={me.capabilities}
+          isAdmin={me.role === 'admin'}
         />
       </aside>
 
@@ -301,7 +318,7 @@ function ChatPageContent() {
           </button>
         </div>
         <NeuroRunSidebar
-          section={section}
+          section={effectiveSection}
           conversations={conversations}
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
@@ -311,11 +328,13 @@ function ChatPageContent() {
           onSuggestion={send}
           disabled={loading}
           onCloseMobile={() => setSidebarOpen(false)}
+          capabilities={me.capabilities}
+          isAdmin={me.role === 'admin'}
         />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {!stravaLinked ? (
+        {!stravaLinked && stravaOffer ? (
           <div className="border-b border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-[11px] leading-relaxed text-white/50">
             <span className="font-medium text-white/65">Strava optionnel</span> — le coach fonctionne sans compte lié.{' '}
             <Link href="/link-strava/" className="text-brand-ice/90 underline decoration-white/15 underline-offset-2 hover:text-white">
@@ -337,16 +356,18 @@ function ChatPageContent() {
               </button>
               <Mark className="hidden sm:flex md:hidden" compact />
               <span className="hidden font-display text-sm font-medium text-white/90 md:inline">
-                {section === 'chat' ? 'Coach' : 'Objectifs'}
+                {effectiveSection === 'chat' ? 'Coach' : 'Objectifs'}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <Link href="/dashboard/" className="btn-quiet text-xs">
                 Accueil
               </Link>
-              <Link href="/link-strava/" className="btn-quiet hidden text-xs sm:inline-flex">
-                Strava
-              </Link>
+              {stravaOffer ? (
+                <Link href="/link-strava/" className="btn-quiet hidden text-xs sm:inline-flex">
+                  Strava
+                </Link>
+              ) : null}
               <button type="button" className="btn-quiet text-xs" onClick={logout}>
                 Sortir
               </button>
@@ -354,11 +375,18 @@ function ChatPageContent() {
           </div>
         </header>
 
-        {section === 'goals' ? (
+        {effectiveSection === 'goals' && showGoals ? (
           <div className="flex-1 overflow-y-auto">
             <GoalsPanel />
           </div>
-        ) : (
+        ) : effectiveSection === 'chat' && !showCoach ? (
+          <div className="flex flex-1 items-center justify-center px-6">
+            <p className="max-w-md text-center text-sm text-white/55">
+              Le coach IA n&apos;est pas activé pour ton offre actuelle. Mets à niveau ton abonnement ou contacte un
+              administrateur.
+            </p>
+          </div>
+        ) : effectiveSection === 'chat' ? (
           <>
             <div className="flex flex-1 flex-col overflow-y-auto">
               <div className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-6 pb-40">
@@ -414,7 +442,7 @@ function ChatPageContent() {
               </form>
             </div>
           </>
-        )}
+        ) : null}
       </div>
     </div>
   )

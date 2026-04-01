@@ -45,11 +45,38 @@ export class ApiError extends Error {
   }
 }
 
+export type MeCapabilities = {
+  coach_chat?: boolean;
+  strava_dashboard?: boolean;
+  goals?: boolean;
+  live_runs?: boolean;
+  forecast?: boolean;
+  circuit?: boolean;
+};
+
 export type MeUser = {
   id: string;
   email: string;
   strava_linked: boolean;
   created_at: string;
+  role?: string;
+  plan?: string;
+  capabilities?: MeCapabilities;
+};
+
+export type OfferConfigPayload = {
+  tiers: Record<
+    string,
+    {
+      coach_chat: boolean;
+      strava_dashboard: boolean;
+      goals: boolean;
+      live_runs: boolean;
+      forecast: boolean;
+      circuit: boolean;
+    }
+  >;
+  prices_eur: Record<string, number>;
 };
 
 export async function api<T>(
@@ -83,6 +110,169 @@ export function getApiBase() {
 
 export async function fetchMe(token: string): Promise<MeUser> {
   return api<MeUser>("/api/me", { token });
+}
+
+export async function fetchPublicOfferConfig(): Promise<OfferConfigPayload> {
+  return api<OfferConfigPayload>("/api/public/offer-config");
+}
+
+export type CheckoutPreviewResult = {
+  plan: string;
+  base_price_eur: number;
+  discount_percent: number;
+  final_price_eur: number;
+  email: string;
+};
+
+export async function checkoutPreview(
+  token: string,
+  plan: "strava" | "performance",
+  promoCode?: string,
+): Promise<CheckoutPreviewResult> {
+  return api<CheckoutPreviewResult>("/api/checkout/preview", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ plan, promo_code: promoCode ?? "" }),
+  });
+}
+
+export async function checkoutSubscribe(
+  token: string,
+  plan: "strava" | "performance",
+  promoCode?: string,
+): Promise<{ ok: boolean; user: MeUser }> {
+  return api<{ ok: boolean; user: MeUser }>("/api/checkout/subscribe", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ plan, promo_code: promoCode ?? "" }),
+  });
+}
+
+export type AdminStats = {
+  users_total: number;
+  users_last_7d: number;
+  users_plan_standard: number;
+  users_plan_strava: number;
+  users_plan_performance: number;
+};
+
+export async function adminStats(token: string): Promise<AdminStats> {
+  return api<AdminStats>("/api/admin/stats", { token });
+}
+
+export type AdminUserRow = {
+  id: string;
+  email: string;
+  role: string;
+  plan: string;
+  strava_linked: boolean;
+  created_at: string;
+};
+
+export async function adminListUsers(
+  token: string,
+  skip = 0,
+  limit = 50,
+): Promise<{ users: AdminUserRow[]; total: number }> {
+  const q = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+  return api<{ users: AdminUserRow[]; total: number }>(`/api/admin/users?${q}`, {
+    token,
+  });
+}
+
+export async function adminGetUser(token: string, id: string): Promise<{
+  user: MeUser;
+  goals_count: number;
+  runs_count: number;
+  goals: unknown[];
+  live_runs: unknown[];
+}> {
+  return api(`/api/admin/users/${encodeURIComponent(id)}`, { token });
+}
+
+export async function adminPatchUser(
+  token: string,
+  id: string,
+  body: { role?: string; plan?: string },
+): Promise<{ ok: boolean; user: MeUser }> {
+  return api(`/api/admin/users/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export type PromoCodeRow = {
+  id: string;
+  code: string;
+  percent_off: number;
+  max_uses: number;
+  uses: number;
+  expires_at?: string | null;
+  active: boolean;
+  applicable_plans?: string[];
+  created_at: string;
+};
+
+export async function adminListPromos(token: string): Promise<{ promo_codes: PromoCodeRow[] }> {
+  return api<{ promo_codes: PromoCodeRow[] }>("/api/admin/promo-codes", { token });
+}
+
+export async function adminCreatePromo(
+  token: string,
+  body: {
+    code: string;
+    percent_off: number;
+    max_uses: number;
+    expires_at?: string | null;
+    active: boolean;
+    applicable_plans?: string[];
+  },
+): Promise<PromoCodeRow> {
+  return api<PromoCodeRow>("/api/admin/promo-codes", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function adminPatchPromo(
+  token: string,
+  id: string,
+  body: Partial<{
+    percent_off: number;
+    max_uses: number;
+    active: boolean;
+    applicable_plans: string[];
+  }>,
+): Promise<PromoCodeRow> {
+  return api<PromoCodeRow>(`/api/admin/promo-codes/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function adminDeletePromo(token: string, id: string): Promise<void> {
+  await api<unknown>(`/api/admin/promo-codes/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function adminGetOfferConfig(token: string): Promise<OfferConfigPayload> {
+  return api<OfferConfigPayload>("/api/admin/offer-config", { token });
+}
+
+export async function adminPutOfferConfig(
+  token: string,
+  cfg: OfferConfigPayload,
+): Promise<OfferConfigPayload> {
+  return api<OfferConfigPayload>("/api/admin/offer-config", {
+    method: "PUT",
+    token,
+    body: JSON.stringify(cfg),
+  });
 }
 
 export async function login(email: string, password: string) {

@@ -9,6 +9,7 @@ import {
   adjustRaceForecast,
   fetchMe,
   fetchRaceForecast,
+  type MeUser,
   type ForecastAdjustEnergy,
   type RaceForecastAdjustResponse,
   type RaceForecastPayload,
@@ -76,6 +77,7 @@ function kmSplits(leg: RaceLegForecast): KmRow[] {
 export default function PrevisionPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
+  const [me, setMe] = useState<MeUser | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [base, setBase] = useState<RaceForecastPayload | null>(null)
   const [adjust, setAdjust] = useState<RaceForecastAdjustResponse | null>(null)
@@ -94,8 +96,13 @@ export default function PrevisionPage() {
     }
     ;(async () => {
       try {
-        const me = await fetchMe(token)
-        if (!me.strava_linked) {
+        const u = await fetchMe(token)
+        setMe(u)
+        if (u.capabilities?.forecast === false) {
+          router.replace('/dashboard/')
+          return
+        }
+        if (!u.strava_linked) {
           router.replace('/link-strava/')
           return
         }
@@ -167,7 +174,11 @@ export default function PrevisionPage() {
           </Link>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          <MemberPrimaryNav active="prevision" />
+          <MemberPrimaryNav
+            active="prevision"
+            capabilities={me?.capabilities}
+            isAdmin={me?.role === 'admin'}
+          />
         </div>
       </aside>
 
@@ -192,7 +203,12 @@ export default function PrevisionPage() {
           </button>
         </div>
         <div className="p-2">
-          <MemberPrimaryNav active="prevision" onNavigate={() => setSidebarOpen(false)} />
+          <MemberPrimaryNav
+            active="prevision"
+            onNavigate={() => setSidebarOpen(false)}
+            capabilities={me?.capabilities}
+            isAdmin={me?.role === 'admin'}
+          />
         </div>
       </aside>
 
