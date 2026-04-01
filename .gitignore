@@ -1,0 +1,14 @@
+# Dependencies & build
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.npm-cache/
+
+# Tooling
+frontend/tsconfig.tsbuildinfo
+*.log
+.DS_Store
+
+# Env (keep .env.example tracked)
+frontend/.env
+frontend/.env.local
