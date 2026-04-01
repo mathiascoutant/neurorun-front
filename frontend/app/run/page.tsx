@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { LiveRunPanel } from '@/components/LiveRunPanel'
+import { StravaLinkBanner } from '@/components/StravaLinkBanner'
 import { Mark } from '@/components/Mark'
 import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
 import { ApiError, fetchMe } from '@/lib/api'
@@ -13,6 +14,8 @@ import { saveMeCache } from '@/lib/meCache'
 export default function RunPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
+  /** `null` = profil inconnu (API injoignable), pas de bannière Strava. */
+  const [stravaLinked, setStravaLinked] = useState<boolean | null>(null)
   const [apiUnreachable, setApiUnreachable] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -26,10 +29,7 @@ export default function RunPage() {
       try {
         const me = await fetchMe(token)
         saveMeCache(me)
-        if (!me.strava_linked) {
-          router.replace('/link-strava/')
-          return
-        }
+        setStravaLinked(me.strava_linked)
         setApiUnreachable(false)
         setReady(true)
       } catch (e) {
@@ -39,6 +39,7 @@ export default function RunPage() {
           return
         }
         /* Réseau ou serveur indisponible : la course reste utilisable (GPS + calcul local, sans API). */
+        setStravaLinked(null)
         setApiUnreachable(true)
         setReady(true)
       }
@@ -97,6 +98,7 @@ export default function RunPage() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {stravaLinked === false ? <StravaLinkBanner /> : null}
         <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface-0/85 backdrop-blur-xl">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">

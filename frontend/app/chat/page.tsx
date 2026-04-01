@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { GoalsPanel } from '@/components/GoalsPanel'
 import { Mark } from '@/components/Mark'
+import { StravaLinkBanner } from '@/components/StravaLinkBanner'
 import { NeuroRunSidebar, type AppSection } from '@/components/NeuroRunSidebar'
 import {
   chat,
@@ -15,13 +16,14 @@ import {
   type ConversationListItem,
 } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
+import { saveMeCache } from '@/lib/meCache'
 
 type Msg = { role: 'user' | 'assistant'; text: string }
 
 const WELCOME: Msg = {
   role: 'assistant',
   text:
-    'NeuroRun : pose une question sur tes sorties Strava — entraînement ou lecture de tes résultats. Tes messages sont enregistrés dans cette conversation. Réponses brèves, en français.',
+    'NeuroRun : pose une question sur ton entraînement ou tes sorties. Avec Strava lié, le coach peut s’appuyer sur ton historique d’activités. Tes messages sont enregistrés dans cette conversation. Réponses brèves, en français.',
 }
 
 const SUGGESTIONS = [
@@ -47,6 +49,7 @@ function ChatPageContent() {
   const searchParams = useSearchParams()
   const section: AppSection = searchParams.get('section') === 'goals' ? 'goals' : 'chat'
   const [ready, setReady] = useState(false)
+  const [stravaLinked, setStravaLinked] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
@@ -75,10 +78,8 @@ function ChatPageContent() {
     ;(async () => {
       try {
         const me = await fetchMe(token)
-        if (!me.strava_linked) {
-          router.replace('/link-strava/')
-          return
-        }
+        saveMeCache(me)
+        setStravaLinked(me.strava_linked)
       } catch {
         router.replace('/login/')
         return
@@ -174,7 +175,7 @@ function ChatPageContent() {
         ...m,
         {
           role: 'assistant',
-          text: "Impossible d'obtenir une réponse (API ou Strava). Vérifie le backend et reconnecte Strava si besoin.",
+          text: "Impossible d'obtenir une réponse pour l'instant. Vérifie la connexion ou réessaie plus tard ; avec Strava lié, le coach a plus de contexte sur tes sorties.",
         },
       ])
     } finally {
@@ -252,6 +253,7 @@ function ChatPageContent() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {!stravaLinked ? <StravaLinkBanner /> : null}
         <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface-0/85 backdrop-blur-xl">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="flex items-center gap-3">
