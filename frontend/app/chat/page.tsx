@@ -9,6 +9,7 @@ import { NeuroRunSidebar, type AppSection } from '@/components/NeuroRunSidebar'
 import {
   chat,
   createConversation,
+  deleteConversation,
   fetchMe,
   getConversation,
   listConversations,
@@ -167,6 +168,54 @@ function ChatPageContent() {
     }
   }
 
+  async function handleDeleteConversation(id: string) {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm('Supprimer cette conversation ? Les messages seront effacés définitivement.')
+    ) {
+      return
+    }
+    const token = getToken()
+    if (!token || loading) return
+    setLoading(true)
+    try {
+      await deleteConversation(token, id)
+    } catch {
+      setMessages((m) => [
+        ...m,
+        {
+          role: 'assistant',
+          text: 'Impossible de supprimer cette conversation pour le moment. Réessaie.',
+        },
+      ])
+      setLoading(false)
+      return
+    }
+
+    let remaining: ConversationListItem[] = []
+    setConversations((prev) => {
+      remaining = prev.filter((c) => c.id !== id)
+      return remaining
+    })
+
+    if (activeConversationId === id) {
+      if (remaining.length > 0) {
+        const top = remaining[0]
+        setActiveConversationId(top.id)
+        try {
+          const full = await getConversation(token, top.id)
+          setMessages(mapConvToMessages(full))
+        } catch {
+          setMessages([WELCOME])
+        }
+      } else {
+        setActiveConversationId(null)
+        setMessages([WELCOME])
+      }
+    }
+    setLoading(false)
+  }
+
   async function send(text: string) {
     const token = getToken()
     if (!token || !text.trim() || loading) return
@@ -225,6 +274,7 @@ function ChatPageContent() {
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
           suggestions={coachSuggestions(stravaLinked)}
           onSuggestion={send}
           disabled={loading}
@@ -256,6 +306,7 @@ function ChatPageContent() {
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
           suggestions={coachSuggestions(stravaLinked)}
           onSuggestion={send}
           disabled={loading}

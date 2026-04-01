@@ -316,6 +316,13 @@ export async function getConversation(token: string, id: string) {
   return normalizeConversation(c);
 }
 
+export async function deleteConversation(token: string, id: string): Promise<void> {
+  await api<unknown>(`/api/conversations/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
 export async function chat(
   token: string,
   message: string,

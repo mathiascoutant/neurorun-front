@@ -9,6 +9,8 @@ type Props = {
   activeConversationId: string | null
   onSelectConversation: (id: string) => void
   onNewConversation: () => void
+  /** Supprime une conversation (historique coach). */
+  onDeleteConversation?: (id: string) => void
   suggestions: string[]
   onSuggestion: (text: string) => void
   disabled: boolean
@@ -21,6 +23,7 @@ export function NeuroRunSidebar({
   activeConversationId,
   onSelectConversation,
   onNewConversation,
+  onDeleteConversation,
   suggestions,
   onSuggestion,
   disabled,
@@ -53,7 +56,7 @@ export function NeuroRunSidebar({
             </p>
             <ul className="space-y-1">
               {conv.map((c) => (
-                <li key={c.id}>
+                <li key={c.id} className="flex items-stretch gap-0.5 rounded-lg">
                   <button
                     type="button"
                     disabled={disabled}
@@ -61,7 +64,7 @@ export function NeuroRunSidebar({
                       onSelectConversation(c.id)
                       onCloseMobile?.()
                     }}
-                    className={`flex w-full flex-col rounded-lg px-2 py-2 text-left text-xs transition disabled:opacity-40 ${
+                    className={`flex min-w-0 flex-1 flex-col rounded-lg px-2 py-2 text-left text-xs transition disabled:opacity-40 ${
                       activeConversationId === c.id
                         ? 'bg-white/[0.08] text-white'
                         : 'text-white/55 hover:bg-white/[0.04] hover:text-white/85'
@@ -75,6 +78,22 @@ export function NeuroRunSidebar({
                       })}
                     </span>
                   </button>
+                  {onDeleteConversation ? (
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      title="Supprimer cette conversation"
+                      aria-label="Supprimer cette conversation"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onDeleteConversation(c.id)
+                      }}
+                      className="shrink-0 self-center rounded-md px-1.5 py-2 text-[11px] text-white/30 transition hover:bg-red-500/15 hover:text-red-200/95 disabled:opacity-40"
+                    >
+                      ×
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
