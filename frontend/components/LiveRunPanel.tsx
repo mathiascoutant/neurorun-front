@@ -1,6 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type LiveRunPayload,
+  type LiveRunSplit,
+  type LiveRunTrackPoint,
+  postLiveRun,
+} from "@/lib/api";
+import { getToken } from "@/lib/auth";
+import pkg from "../package.json";
 
 function haversineM(
   lat1: number,
@@ -192,6 +200,44 @@ const PAUSE_SPEED_KMH = 1;
 const RESUME_SPEED_KMH = 1.6;
 const PAUSE_AFTER_SLOW_SEC = 5;
 const SPEED_SMOOTH_WINDOW = 5;
+/** Limite alignée sur le backend (échantillonnage si dépassé). */
+const MAX_TRACK_POINTS = 3400;
+
+function positionToTrackPoint(pos: GeolocationPosition): LiveRunTrackPoint {
+  const c = pos.coords;
+  const p: LiveRunTrackPoint = {
+    lat: c.latitude,
+    lng: c.longitude,
+    t_ms: pos.timestamp,
+  };
+  if (typeof c.accuracy === "number" && Number.isFinite(c.accuracy)) {
+    p.accuracy_m = c.accuracy;
+  }
+  if (typeof c.altitude === "number" && Number.isFinite(c.altitude)) {
+    p.alt_m = c.altitude;
+  }
+  if (typeof c.heading === "number" && Number.isFinite(c.heading)) {
+    p.heading_deg = c.heading;
+  }
+  if (typeof c.speed === "number" && Number.isFinite(c.speed) && c.speed >= 0) {
+    p.speed_mps = c.speed;
+  }
+  return p;
+}
+
+function downsampleTrackPoints(pts: LiveRunTrackPoint[]): LiveRunTrackPoint[] {
+  if (pts.length <= MAX_TRACK_POINTS) return pts;
+  const stride = Math.ceil(pts.length / MAX_TRACK_POINTS);
+  const out: LiveRunTrackPoint[] = [];
+  for (let i = 0; i < pts.length; i += stride) {
+    out.push(pts[i]);
+  }
+  const last = pts[pts.length - 1];
+  if (out.length > 0 && out[out.length - 1].t_ms !== last.t_ms) {
+    out.push(last);
+  }
+  return out.slice(0, MAX_TRACK_POINTS);
+}
 
 function pushSpeedSample(
   buf: number[],
@@ -264,8 +310,14 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
   const lastDistanceUiBucketRef = useRef(0);
   const lastKmCrossingMsRef = useRef(0);
   const lastAnnouncedKmRef = useRef(0);
+  const splitsRef = useRef<LiveRunSplit[]>([]);
+  const trackPointsRef = useRef<LiveRunTrackPoint[]>([]);
+  const maxImpliedKmhRef = useRef(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wakeRef = useRef<{ release: () => Promise<void> } | null>(null);
+  const [serverSave, setServerSave] = useState<
+    "idle" | "saving" | "saved" | "error" | "skipped"
+  >("idle");
 
   const cleanupWatch = useCallback(() => {
     if (
@@ -349,6 +401,10 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
     slowSinceMsRef.current = null;
     lastTsRef.current = null;
     lastKmCrossingMsRef.current = 0;
+    splitsRef.current = [];
+    trackPointsRef.current = [];
+    maxImpliedKmhRef.current = 0;
+    setServerSave("idle");
     setElapsedSec(0);
     setWallSec(0);
     setAutoPaused(false);
@@ -363,6 +419,7 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
       lastKmCrossingMsRef.current = ts;
       lastTickMsRef.current = Date.now();
       movingSecRef.current = 0;
+      trackPointsRef.current = [positionToTrackPoint(pos)];
       setGpsClockLive(true);
     };
 
@@ -469,6 +526,9 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
         if (impliedKmh > MAX_IMPLIED_SPEED_KMH) {
           return;
         }
+        if (impliedKmh > maxImpliedKmhRef.current) {
+          maxImpliedKmhRef.current = impliedKmh;
+        }
 
         speedBufRef.current = pushSpeedSample(
           speedBufRef.current,
@@ -482,6 +542,7 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
         lastTsRef.current = tsMs;
 
         accMRef.current += d;
+        trackPointsRef.current.push(positionToTrackPoint(pos));
 
         const bucket = Math.floor(accMRef.current / DISTANCE_UI_STEP_M);
         if (bucket > lastDistanceUiBucketRef.current) {
@@ -499,6 +560,12 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
           for (let i = 0; i < crossed; i++) {
             lastAnnouncedKmRef.current += 1;
             const k = lastAnnouncedKmRef.current;
+            splitsRef.current.push({
+              km: k,
+              split_sec: perKmSec,
+              pace_sec_per_km: perKmSec,
+              end_timestamp_ms: tsMs,
+            });
             speakKm(k, perKmSec, perKmSec * 10);
           }
           lastKmCrossingMsRef.current = tsMs;
@@ -515,21 +582,69 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
   const stopRun = useCallback(() => {
     const base = gpsStartTsMsRef.current;
     const now = Date.now();
+    let wallFinal = 0;
     if (base > 0 && lastTickMsRef.current > 0) {
       const dt = (now - lastTickMsRef.current) / 1000;
       if (dt > 0 && dt < 5 && !pausedRef.current) {
         movingSecRef.current += dt;
       }
       setElapsedSec(movingSecRef.current);
-      setWallSec(Math.max(0, (now - base) / 1000));
+      wallFinal = Math.max(0, (now - base) / 1000);
+      setWallSec(wallFinal);
     }
+    const movingFinal = movingSecRef.current;
+    const distM = accMRef.current;
+    const gpsEndMs = lastTsRef.current ?? now;
+    const targetNum = Math.max(0.1, parseFloat(targetKm.replace(",", ".")) || 0);
+
     cleanupWatch();
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
-    setDistanceM(accMRef.current);
+    setDistanceM(distM);
     setPhase("ended");
-  }, [cleanupWatch]);
+
+    const token = getToken();
+    if (
+      !token ||
+      base <= 0 ||
+      (distM < 1 && movingFinal < 3)
+    ) {
+      setServerSave("skipped");
+      return;
+    }
+
+    const distKm = distM / 1000;
+    const avgPace =
+      distKm > 0.001 && movingFinal > 0 ? movingFinal / distKm : 0;
+
+    const payload: LiveRunPayload = {
+      target_km: targetNum,
+      distance_m: distM,
+      moving_sec: movingFinal,
+      wall_sec: wallFinal,
+      gps_start_ts_ms: base,
+      gps_end_ts_ms: gpsEndMs,
+      avg_pace_sec_per_km: avgPace,
+      max_implied_speed_kmh: maxImpliedKmhRef.current,
+      splits: [...splitsRef.current],
+      track_points: downsampleTrackPoints([...trackPointsRef.current]),
+      client_version: pkg.version,
+      user_agent:
+        typeof navigator !== "undefined" ? navigator.userAgent : "",
+      navigator_language:
+        typeof navigator !== "undefined" ? navigator.language : "",
+      screen_w: typeof window !== "undefined" ? window.screen.width : 0,
+      screen_h: typeof window !== "undefined" ? window.screen.height : 0,
+      online_at_end: typeof navigator !== "undefined" && navigator.onLine,
+      auto_pause_detected: wallFinal > movingFinal + 2,
+    };
+
+    setServerSave("saving");
+    void postLiveRun(token, payload)
+      .then(() => setServerSave("saved"))
+      .catch(() => setServerSave("error"));
+  }, [cleanupWatch, targetKm]);
 
   const resetRun = useCallback(() => {
     cleanupWatch();
@@ -547,6 +662,7 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
     setError("");
     setGeoOk(null);
     setGpsClockLive(false);
+    setServerSave("idle");
   }, [cleanupWatch]);
 
   const showOfflineBanner = apiUnreachableAtLoad || !netOnline;
@@ -709,6 +825,26 @@ export function LiveRunPanel({ apiUnreachableAtLoad = false }: Props) {
               </button>
             )}
           </div>
+
+          {phase === "ended" ? (
+            <p className="text-[11px] leading-relaxed text-white/45">
+              {serverSave === "saving" ? (
+                <>Enregistrement de la sortie sur le serveur…</>
+              ) : serverSave === "saved" ? (
+                <span className="text-emerald-200/90">
+                  Sortie enregistrée (splits au km, trace et métadonnées).
+                </span>
+              ) : serverSave === "error" ? (
+                <span className="text-amber-200/90">
+                  Impossible d’enregistrer la sortie — réessaie plus tard ou vérifie la connexion.
+                </span>
+              ) : serverSave === "skipped" ? (
+                <>
+                  Enregistrement non envoyé (session trop courte, pas de fix GPS, ou non connecté).
+                </>
+              ) : null}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>

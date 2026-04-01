@@ -481,3 +481,73 @@ export async function goalChat(token: string, goalId: string, message: string) {
   );
   return { reply: d.reply == null ? "" : String(d.reply) };
 }
+
+export type LiveRunSplit = {
+  km: number;
+  split_sec: number;
+  pace_sec_per_km: number;
+  end_timestamp_ms: number;
+};
+
+export type LiveRunTrackPoint = {
+  lat: number;
+  lng: number;
+  t_ms: number;
+  accuracy_m?: number;
+  alt_m?: number;
+  heading_deg?: number;
+  speed_mps?: number;
+};
+
+export type LiveRunPayload = {
+  target_km: number;
+  distance_m: number;
+  moving_sec: number;
+  wall_sec: number;
+  gps_start_ts_ms: number;
+  gps_end_ts_ms: number;
+  avg_pace_sec_per_km: number;
+  max_implied_speed_kmh: number;
+  splits: LiveRunSplit[];
+  track_points: LiveRunTrackPoint[];
+  client_version: string;
+  user_agent: string;
+  navigator_language: string;
+  screen_w: number;
+  screen_h: number;
+  online_at_end: boolean;
+  auto_pause_detected: boolean;
+};
+
+export async function postLiveRun(token: string, body: LiveRunPayload) {
+  return api<{ id: string; created_at: string }>("/api/live-runs", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export type LiveRunListItem = {
+  id: string;
+  created_at: string;
+  target_km: number;
+  distance_m: number;
+  moving_sec: number;
+  wall_sec: number;
+  avg_pace_sec_per_km: number;
+  split_count: number;
+};
+
+export async function listLiveRuns(token: string) {
+  const d = await api<{ runs: LiveRunListItem[] }>("/api/live-runs", {
+    token,
+  });
+  return d.runs ?? [];
+}
+
+export async function getLiveRun(token: string, id: string) {
+  return api<Record<string, unknown>>(
+    `/api/live-runs/${encodeURIComponent(id)}`,
+    { token },
+  );
+}
