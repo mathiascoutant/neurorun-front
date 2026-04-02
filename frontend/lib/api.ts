@@ -123,8 +123,11 @@ export function getApiBase() {
   return API;
 }
 
-export async function fetchMe(token: string): Promise<MeUser> {
-  return api<MeUser>("/api/me", { token });
+export async function fetchMe(
+  token: string,
+  init?: Pick<RequestInit, "signal">,
+): Promise<MeUser> {
+  return api<MeUser>("/api/me", { token, ...init });
 }
 
 export type PatchMePayload = {

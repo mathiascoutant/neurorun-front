@@ -1,11 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mark } from '@/components/Mark'
 import { RevealOnScroll } from '@/components/RevealOnScroll'
-import { fetchMe, fetchPublicOfferConfig } from '@/lib/api'
+import { ApiError, fetchMe, fetchPublicOfferConfig } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 
 const DEFAULT_STRAVA_EUR = 3.99
@@ -49,7 +49,6 @@ function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 export default function HomePage() {
   const router = useRouter()
-  const [gate, setGate] = useState<'checking' | 'landing'>('checking')
   const [priceStravaEur, setPriceStravaEur] = useState(DEFAULT_STRAVA_EUR)
   const [pricePerfEur, setPricePerfEur] = useState(DEFAULT_PERF_EUR)
   const offersScrollRef = useRef<HTMLDivElement | null>(null)
@@ -76,21 +75,21 @@ export default function HomePage() {
     }
   }, [])
 
-  useEffect(() => {
+  /* Pas d’écran de blocage : contenu visible tout de suite ; session vérifiée en arrière-plan. */
+  useLayoutEffect(() => {
+    const token = getToken()
+    if (!token) return
     let off = false
     ;(async () => {
-      const token = getToken()
-      if (!token) {
-        if (!off) setGate('landing')
-        return
-      }
+      const ctrl = new AbortController()
+      const tid = setTimeout(() => ctrl.abort(), 12_000)
       try {
-        await fetchMe(token)
-        if (off) return
-        router.replace('/dashboard/')
-      } catch {
-        clearToken()
-        if (!off) setGate('landing')
+        await fetchMe(token, { signal: ctrl.signal })
+        if (!off) router.replace('/dashboard/')
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) clearToken()
+      } finally {
+        clearTimeout(tid)
       }
     })()
     return () => {
@@ -100,7 +99,6 @@ export default function HomePage() {
 
   /* Carrousel : centrage Strava + halo sur la carte au centre (mobile) */
   useEffect(() => {
-    if (gate !== 'landing') return
     const scroller = offersScrollRef.current
     if (!scroller) return
 
@@ -167,19 +165,7 @@ export default function HomePage() {
       scroller.removeEventListener('scroll', onScroll)
       cancelAnimationFrame(scrollRaf)
     }
-  }, [gate])
-
-  if (gate === 'checking') {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <div className="relative h-14 w-14">
-          <div className="absolute inset-0 rounded-2xl border-2 border-brand-orange/25" />
-          <div className="absolute inset-0 animate-spin rounded-2xl border-2 border-transparent border-t-brand-orange [animation-duration:0.85s]" />
-        </div>
-        <p className="text-sm text-white/45">Synchronisation…</p>
-      </main>
-    )
-  }
+  }, [])
 
   return (
     <div className="relative min-h-screen">
