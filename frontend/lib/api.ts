@@ -57,11 +57,26 @@ export type MeCapabilities = {
 export type MeUser = {
   id: string;
   email: string;
+  first_name?: string;
+  last_name?: string;
+  birth_date?: string;
+  gender?: string;
   strava_linked: boolean;
   created_at: string;
   role?: string;
   plan?: string;
   capabilities?: MeCapabilities;
+};
+
+export type RegisterGender = "female" | "male" | "other" | "unspecified";
+
+export type RegisterPayload = {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  birth_date: string;
+  gender: RegisterGender;
 };
 
 export type OfferConfigPayload = {
@@ -110,6 +125,32 @@ export function getApiBase() {
 
 export async function fetchMe(token: string): Promise<MeUser> {
   return api<MeUser>("/api/me", { token });
+}
+
+export type PatchMePayload = {
+  first_name: string;
+  last_name: string;
+  birth_date: string;
+  gender: RegisterGender;
+  /** Obligatoire si `new_password` est défini. */
+  current_password?: string;
+  new_password?: string;
+};
+
+export async function patchMe(token: string, body: PatchMePayload): Promise<MeUser> {
+  return api<MeUser>("/api/me", {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteMyAccount(token: string, password: string): Promise<{ ok: boolean }> {
+  return api<{ ok: boolean }>("/api/me/delete-account", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ password }),
+  });
 }
 
 export async function fetchPublicOfferConfig(): Promise<OfferConfigPayload> {
@@ -310,10 +351,18 @@ export async function login(email: string, password: string) {
   });
 }
 
-export async function register(email: string, password: string) {
+export async function register(body: RegisterPayload) {
   return api<{ token: string; user: MeUser }>("/api/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(body),
+  });
+}
+
+/** Vérifie le format et si l’email n’est pas déjà enregistré (inscription). */
+export async function checkRegistrationEmail(email: string) {
+  return api<{ available: boolean }>("/api/auth/register/check-email", {
+    method: "POST",
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
   });
 }
 

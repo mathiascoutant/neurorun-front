@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Mark } from "@/components/Mark";
+import { MemberPageHeader } from "@/components/MemberPageHeader";
 import { fetchMe, stravaAuthorizeUrl } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
 
@@ -89,19 +89,23 @@ function LinkStravaContent() {
   }
 
   return (
-    <main className="min-h-screen">
-      <header className="border-b border-white/[0.06] bg-surface-1/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-4">
-          <Mark />
-          <button type="button" className="btn-quiet text-xs" onClick={logout}>
-            Déconnexion
-          </button>
-        </div>
-      </header>
+    <main className="min-h-[100dvh] overflow-x-hidden">
+      <MemberPageHeader
+        onLogout={logout}
+        maxWidthClass="mx-auto w-full max-w-3xl"
+        leading={
+          <Link
+            href="/dashboard/"
+            className="text-xs font-medium text-white/40 underline decoration-white/15 underline-offset-4 transition hover:text-white/85 hover:decoration-white/30"
+          >
+            Tableau de bord
+          </Link>
+        }
+      />
 
-      <div className="mx-auto max-w-3xl px-4 py-12">
+      <div className="member-main-pad-b mx-auto max-w-3xl px-safe py-8 sm:py-12">
         <p className="kicker text-brand-orange">Étape 2 sur 2</p>
-        <h1 className="mt-3 font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+        <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
           Strava
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/55">
@@ -109,7 +113,7 @@ function LinkStravaContent() {
           serveur.
         </p>
 
-        <div className="mt-10 panel p-6 sm:p-8">
+        <div className="mt-8 panel p-5 sm:mt-10 sm:p-8">
           {error ? (
             <div className="mb-6 rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-100">
               {error}
@@ -129,16 +133,16 @@ function LinkStravaContent() {
             </p>
           ) : null}
 
-          <div className={`flex flex-col gap-3 sm:flex-row sm:items-center ${!stravaAllowed ? "hidden" : ""}`}>
+          <div className={`flex flex-col gap-3 sm:flex-row sm:items-stretch ${!stravaAllowed ? "hidden" : ""}`}>
             <button
               type="button"
-              className="btn-brand flex-1 sm:flex-none sm:px-10"
+              className="btn-brand w-full sm:w-auto sm:flex-1 sm:px-8 md:px-10"
               disabled={loading}
               onClick={connect}
             >
               {loading ? "Redirection…" : "Associer mon compte Strava"}
             </button>
-            <Link href="/dashboard/" className="btn-quiet flex-1 text-center sm:flex-none">
+            <Link href="/dashboard/" className="btn-quiet w-full text-center sm:w-auto sm:shrink-0">
               Déjà lié — tableau de bord
             </Link>
           </div>

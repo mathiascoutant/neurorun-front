@@ -5,7 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { GoalsPanel } from '@/components/GoalsPanel'
 import { Mark } from '@/components/Mark'
+import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
+import { MemberPageHeader } from '@/components/MemberPageHeader'
 import { NeuroRunSidebar, type AppSection } from '@/components/NeuroRunSidebar'
+import { StravaLinkBanner } from '@/components/StravaLinkBanner'
 import {
   chat,
   createConversation,
@@ -277,13 +280,14 @@ function ChatPageContent() {
   }
 
   return (
-    <div className="flex min-h-[100dvh]">
+    <div className="flex min-h-[100dvh] overflow-x-hidden">
       {/* Desktop sidebar */}
-      <aside className="relative z-30 hidden w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:flex">
-        <div className="border-b border-white/[0.06] p-4">
+      <aside className="relative z-30 hidden w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
+        <div className="shrink-0 border-b border-white/[0.06] px-safe pt-safe pb-3">
           <Mark compact />
         </div>
-        <NeuroRunSidebar
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <NeuroRunSidebar
           section={effectiveSection}
           conversations={conversations}
           activeConversationId={activeConversationId}
@@ -295,28 +299,25 @@ function ChatPageContent() {
           disabled={loading}
           capabilities={me.capabilities}
           isAdmin={me.role === 'admin'}
+          profileFirstName={me.first_name}
         />
+        </div>
       </aside>
 
-      {/* Mobile drawer */}
-      {sidebarOpen ? (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
-          aria-hidden
-          onClick={() => setSidebarOpen(false)}
-        />
-      ) : null}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[min(100%,300px)] transform border-r border-white/[0.06] bg-surface-1 shadow-lift transition-transform duration-200 md:hidden ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+      <MemberMobileDrawer
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        headerLeading={
+          <Link
+            href="/dashboard/"
+            className="inline-flex"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="NeuroRun — tableau de bord"
+          >
+            <Mark compact />
+          </Link>
+        }
       >
-        <div className="flex items-center justify-between border-b border-white/[0.06] p-3">
-          <Mark compact />
-          <button type="button" className="btn-quiet py-1.5 text-xs" onClick={() => setSidebarOpen(false)}>
-            Fermer
-          </button>
-        </div>
         <NeuroRunSidebar
           section={effectiveSection}
           conversations={conversations}
@@ -330,57 +331,26 @@ function ChatPageContent() {
           onCloseMobile={() => setSidebarOpen(false)}
           capabilities={me.capabilities}
           isAdmin={me.role === 'admin'}
+          profileFirstName={me.first_name}
         />
-      </aside>
+      </MemberMobileDrawer>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        {!stravaLinked && stravaOffer ? (
-          <div className="border-b border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-[11px] leading-relaxed text-white/50">
-            <span className="font-medium text-white/65">Strava optionnel</span> — le coach fonctionne sans compte lié.{' '}
-            <Link href="/link-strava/" className="text-brand-ice/90 underline decoration-white/15 underline-offset-2 hover:text-white">
-              Associer Strava
-            </Link>{' '}
-            ajoute ton historique (volume, allure) pour des réponses plus personnalisées.
-          </div>
-        ) : null}
-        <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface-0/85 backdrop-blur-xl">
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="btn-quiet py-2 text-xs md:hidden"
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Ouvrir le menu"
-              >
-                Menu
-              </button>
-              <Mark className="hidden sm:flex md:hidden" compact />
-              <span className="hidden font-display text-sm font-medium text-white/90 md:inline">
-                {effectiveSection === 'chat' ? 'Coach' : 'Objectifs'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href="/dashboard/" className="btn-quiet text-xs">
-                Accueil
-              </Link>
-              {stravaOffer ? (
-                <Link href="/link-strava/" className="btn-quiet hidden text-xs sm:inline-flex">
-                  Strava
-                </Link>
-              ) : null}
-              <button type="button" className="btn-quiet text-xs" onClick={logout}>
-                Sortir
-              </button>
-            </div>
-          </div>
-        </header>
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+        {!stravaLinked && stravaOffer ? <StravaLinkBanner /> : null}
+        <MemberPageHeader
+          title={effectiveSection === 'chat' ? 'Coach' : 'Objectifs'}
+          onMenuClick={() => setSidebarOpen((o) => !o)}
+          menuOpen={sidebarOpen}
+          onLogout={logout}
+          maxWidthClass="mx-auto w-full max-w-6xl"
+        />
 
         {effectiveSection === 'goals' && showGoals ? (
-          <div className="flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
             <GoalsPanel />
           </div>
         ) : effectiveSection === 'chat' && !showCoach ? (
-          <div className="flex flex-1 items-center justify-center px-6">
+          <div className="flex flex-1 items-center justify-center px-safe">
             <p className="max-w-md text-center text-sm text-white/55">
               Le coach IA n&apos;est pas activé pour ton offre actuelle. Mets à niveau ton abonnement ou contacte un
               administrateur.
@@ -388,8 +358,8 @@ function ChatPageContent() {
           </div>
         ) : effectiveSection === 'chat' ? (
           <>
-            <div className="flex flex-1 flex-col overflow-y-auto">
-              <div className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-6 pb-40">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain">
+              <div className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-safe py-5 pb-36 sm:py-6 sm:pb-40">
                 <div className="space-y-4">
                   {messages.map((msg, i) => (
                     <div
@@ -397,7 +367,7 @@ function ChatPageContent() {
                       className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-up`}
                     >
                       <div
-                        className={`max-w-[min(100%,520px)] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-insetline ${
+                        className={`max-w-[min(100%,520px)] rounded-2xl px-3 py-2.5 text-sm leading-relaxed shadow-insetline sm:px-4 sm:py-3 ${
                           msg.role === 'user'
                             ? 'bg-gradient-to-br from-brand-orange/25 to-brand-deep/20 text-white'
                             : 'border border-white/[0.08] bg-surface-2/90 text-white/90'
@@ -426,17 +396,17 @@ function ChatPageContent() {
               </div>
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-white/[0.08] bg-surface-0/92 p-3 backdrop-blur-xl sm:p-4 md:left-[280px]">
-              <form onSubmit={onSubmit} className="mx-auto flex max-w-3xl gap-2">
+            <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-white/[0.08] bg-surface-0/92 px-safe pb-safe pt-3 backdrop-blur-xl md:left-[280px]">
+              <form onSubmit={onSubmit} className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-stretch">
                 <input
-                  className="field flex-1 border-white/[0.08] bg-surface-2/80"
-                  placeholder="Pose ta question (entraînement, objectifs, récup…)…"
+                  className="field min-h-11 w-full flex-1 border-white/[0.08] bg-surface-2/80 sm:min-h-12"
+                  placeholder="Ta question…"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={loading}
                   autoComplete="off"
                 />
-                <button type="submit" className="btn-brand shrink-0 px-6" disabled={loading || !input.trim()}>
+                <button type="submit" className="btn-brand w-full shrink-0 px-6 sm:w-auto sm:self-stretch" disabled={loading || !input.trim()}>
                   Envoyer
                 </button>
               </form>

@@ -17,6 +17,7 @@ type Props = {
   onCloseMobile?: () => void
   capabilities?: MeCapabilities
   isAdmin?: boolean
+  profileFirstName?: string | null
 }
 
 export function NeuroRunSidebar({
@@ -32,22 +33,29 @@ export function NeuroRunSidebar({
   onCloseMobile,
   capabilities,
   isAdmin,
+  profileFirstName,
 }: Props) {
   const conv = Array.isArray(conversations) ? conversations : []
   const sugg = Array.isArray(suggestions) ? suggestions : []
   const navActive = section === 'goals' ? 'goals' : 'coach'
 
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-4">
-      <MemberPrimaryNav
-        active={navActive}
-        onNavigate={onCloseMobile}
-        capabilities={capabilities}
-        isAdmin={isAdmin}
-      />
+  const nav = (
+    <MemberPrimaryNav
+      active={navActive}
+      onNavigate={onCloseMobile}
+      capabilities={capabilities}
+      isAdmin={isAdmin}
+      profileFirstName={profileFirstName}
+    />
+  )
 
-      {section === 'chat' ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 border-t border-white/[0.06] pt-4">
+  if (section === 'chat') {
+    return (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 pb-safe">
+        <div className="flex min-h-0 flex-[2] flex-col overflow-hidden">
+          {nav}
+        </div>
+        <div className="flex min-h-0 flex-[3] flex-col gap-3 border-t border-white/[0.06] pt-4">
           <button
             type="button"
             disabled={disabled}
@@ -59,10 +67,8 @@ export function NeuroRunSidebar({
           >
             Nouvelle conversation
           </button>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <p className="mb-2 pl-1 text-[10px] font-medium uppercase tracking-wider text-white/35">
-              Historique
-            </p>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+            <p className="mb-2 pl-1 text-[10px] font-medium uppercase tracking-wider text-white/35">Historique</p>
             <ul className="space-y-1">
               {conv.map((c) => (
                 <li key={c.id} className="flex items-stretch gap-0.5 rounded-lg">
@@ -113,9 +119,7 @@ export function NeuroRunSidebar({
             ) : null}
           </div>
           <div>
-            <p className="mb-2 pl-1 text-[10px] font-medium uppercase tracking-wider text-white/35">
-              Idées
-            </p>
+            <p className="mb-2 pl-1 text-[10px] font-medium uppercase tracking-wider text-white/35">Idées</p>
             <div className="flex max-h-40 flex-col gap-1.5 overflow-y-auto pr-1">
               {sugg.map((s) => (
                 <button
@@ -134,14 +138,17 @@ export function NeuroRunSidebar({
             </div>
           </div>
         </div>
-      ) : null}
+      </div>
+    )
+  }
 
-      {section === 'goals' ? (
-        <p className="border-t border-white/[0.06] pt-4 text-xs leading-relaxed text-white/45">
-          Plan, avis de faisabilité, et fil de discussion pour ton ressenti — tu peux ajuster ton objectif avec le
-          coach au fil des messages.
-        </p>
-      ) : null}
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4 pb-safe">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{nav}</div>
+      <p className="shrink-0 border-t border-white/[0.06] pt-4 text-xs leading-relaxed text-white/45">
+        Plan, avis de faisabilité, et fil de discussion pour ton ressenti — tu peux ajuster ton objectif avec le coach au
+        fil des messages.
+      </p>
     </div>
   )
 }

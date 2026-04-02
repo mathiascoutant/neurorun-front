@@ -18,11 +18,11 @@
     background-color: rgba(18, 21, 31, 0.8);
   }
   .btn-brand {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-orange px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-deep active:scale-95 disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex min-h-12 touch-manipulation items-center justify-center gap-2 rounded-xl bg-brand-orange px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-deep active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:text-sm;
     box-shadow: 0 0 32px rgba(252, 76, 2, 0.25);
   }
   .btn-quiet {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition;
+    @apply inline-flex min-h-11 touch-manipulation items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-base font-medium transition sm:text-sm;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background-color: rgba(255, 255, 255, 0.04);
     color: rgba(255, 255, 255, 0.9);
@@ -35,7 +35,7 @@
     background-color: rgba(255, 255, 255, 0.07);
   }
   .field {
-    @apply w-full rounded-xl px-4 py-3 text-sm text-white outline-none transition focus:ring-2;
+    @apply min-h-12 w-full rounded-xl px-4 py-3 text-base text-white outline-none transition focus:ring-2 md:text-sm;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background-color: rgba(10, 12, 18, 0.9);
   }
@@ -46,11 +46,114 @@
     border-color: rgba(252, 76, 2, 0.45);
     --tw-ring-color: rgba(252, 76, 2, 0.25);
   }
+  select.field {
+    cursor: pointer;
+    appearance: auto;
+    color-scheme: dark;
+  }
   .kicker {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.2em;
     color: rgba(103, 232, 249, 0.8);
+  }
+
+  /*
+   * Carte auth : pas de overflow:hidden ni backdrop-filter sur l’ancêtre du <select>
+   * (sinon menu natif décollé en haut-gauche sur Chrome / WebKit). Pas de transform non plus.
+   */
+  @keyframes auth-card-reveal {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .auth-card {
+    @apply relative rounded-[1.75rem] shadow-lift;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: linear-gradient(
+      165deg,
+      rgba(30, 34, 52, 0.97) 0%,
+      rgba(12, 14, 22, 0.95) 48%,
+      rgba(8, 10, 16, 0.98) 100%
+    );
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.06) inset,
+      0 32px 80px rgba(0, 0, 0, 0.55);
+    animation: auth-card-reveal 0.45s ease-out forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .auth-card {
+      animation: none;
+    }
+  }
+
+  /* Apparition au scroll (voir components/RevealOnScroll.tsx) */
+  .reveal-scroll {
+    opacity: 0;
+    transition:
+      opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .reveal-scroll--visible {
+    opacity: 1;
+  }
+  .reveal-scroll--up {
+    transform: translateY(1.15rem);
+  }
+  .reveal-scroll--up.reveal-scroll--visible {
+    transform: translateY(0);
+  }
+  .reveal-scroll--from-left {
+    transform: translateX(-1.1rem);
+  }
+  .reveal-scroll--from-left.reveal-scroll--visible {
+    transform: translateX(0);
+  }
+  .reveal-scroll--from-right {
+    transform: translateX(1.1rem);
+  }
+  .reveal-scroll--from-right.reveal-scroll--visible {
+    transform: translateX(0);
+  }
+  .reveal-scroll--zoom {
+    transform: scale(0.94) translateY(0.45rem);
+  }
+  .reveal-scroll--zoom.reveal-scroll--visible {
+    transform: scale(1) translateY(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-scroll,
+    .reveal-scroll.reveal-scroll--visible {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
+  }
+}
+
+/* Zones sûres (encoches, barre d’accueil) — viewportFit: cover dans layout */
+@layer utilities {
+  .px-safe {
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  }
+  .pt-safe {
+    padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+  }
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  }
+  .member-scroll-x {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .member-main-pad-b {
+    padding-bottom: max(4rem, calc(2.5rem + env(safe-area-inset-bottom, 0px)));
   }
 }

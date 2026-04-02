@@ -275,13 +275,17 @@ type Props = {
   apiUnreachableAtLoad?: boolean;
   /** Appelé quand la sortie est enregistrée côté serveur (rafraîchir l’historique). */
   onRunSaved?: () => void;
+  /** `true` pendant la course : masquer header / menu (géré par la page Course). */
+  onRunFocusModeChange?: (focused: boolean) => void;
 };
 
 export function LiveRunPanel({
   apiUnreachableAtLoad = false,
   onRunSaved,
+  onRunFocusModeChange,
 }: Props) {
   const netOnline = useNavigatorOnline();
+  const fullscreenTargetRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<RunPhase>("setup");
   const [targetKm, setTargetKm] = useState("10");
   const [error, setError] = useState("");
@@ -354,6 +358,46 @@ export function LiveRunPanel({
     bump();
     return () => syn.removeEventListener("voiceschanged", bump);
   }, []);
+
+  useEffect(() => {
+    onRunFocusModeChange?.(phase === "running");
+  }, [phase, onRunFocusModeChange]);
+
+  useEffect(() => {
+    return () => {
+      onRunFocusModeChange?.(false);
+    };
+  }, [onRunFocusModeChange]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (phase !== "running") {
+      if (document.fullscreenElement) {
+        void document.exitFullscreen().catch(() => {});
+      }
+      return;
+    }
+    const el = fullscreenTargetRef.current;
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      const anyEl = el as HTMLElement & {
+        webkitRequestFullscreen?: () => void;
+      };
+      const fn =
+        el.requestFullscreen?.bind(el) ?? anyEl.webkitRequestFullscreen?.bind(el);
+      if (fn) void Promise.resolve(fn()).catch(() => {});
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [phase]);
+
+  useEffect(
+    () => () => {
+      if (typeof document !== "undefined" && document.fullscreenElement) {
+        void document.exitFullscreen().catch(() => {});
+      }
+    },
+    [],
+  );
 
   const trueM = accMRef.current;
   const distKmShown = distanceM / 1000;
@@ -673,10 +717,17 @@ export function LiveRunPanel({
     setServerSave("idle");
   }, [cleanupWatch]);
 
-  const showOfflineBanner = apiUnreachableAtLoad || !netOnline;
+  const showOfflineBanner =
+    phase !== "running" && (apiUnreachableAtLoad || !netOnline);
 
   return (
-    <div className="space-y-6">
+    <div
+      className={
+        phase === "running"
+          ? "flex min-h-0 flex-1 flex-col gap-0"
+          : "space-y-6"
+      }
+    >
       {showOfflineBanner ? (
         <div className="rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-4 py-3 text-xs leading-relaxed text-cyan-100/95">
           <p className="font-medium text-cyan-50/95">Mode local / sans internet</p>
@@ -689,21 +740,8 @@ export function LiveRunPanel({
         </div>
       ) : null}
 
-      <div className="panel p-5">
-        <h2 className="font-display text-sm font-semibold text-white">
-          Course en direct
-        </h2>
-        <p className="mt-1 text-[11px] leading-relaxed text-white/40">
-          Le départ du chrono est calé sur le{" "}
-          <strong className="font-medium text-white/55">timestamp GPS</strong> du premier point (comme une trace GPX).
-          Temps affiché = temps en mouvement avec pause auto (environ 5 s sous 1 km/h). Segments absurdes filtrés
-          (vitesse impliquée au-delà de 50 km/h). Distance par pas d’1 m, annonce à chaque km. Garde l’onglet ouvert
-          pendant la sortie.
-        </p>
-      </div>
-
       {phase === "setup" ? (
-        <div className="panel p-5 space-y-4">
+        <div className="panel space-y-4 p-4 sm:p-5">
           <label className="block">
             <span className="text-[10px] font-medium uppercase tracking-wider text-white/40">
               Distance visée (km)
@@ -711,7 +749,7 @@ export function LiveRunPanel({
             <input
               type="text"
               inputMode="decimal"
-              className="field mt-2 w-full max-w-[200px] border-white/[0.08] bg-surface-2/80"
+              className="field mt-2 w-full max-w-full border-white/[0.08] bg-surface-2/80 sm:max-w-[200px]"
               value={targetKm}
               onChange={(e) => setTargetKm(e.target.value)}
               placeholder="10"
@@ -724,7 +762,7 @@ export function LiveRunPanel({
           ) : null}
           <button
             type="button"
-            className="btn-brand px-6 py-2.5 text-sm"
+            className="btn-brand w-full px-6 py-2.5 text-sm sm:w-auto"
             onClick={() => void startRun()}
           >
             Démarrer la course
@@ -733,24 +771,43 @@ export function LiveRunPanel({
       ) : null}
 
       {phase === "running" || phase === "ended" ? (
-        <div className="panel p-5 space-y-5">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
+        <div
+          ref={fullscreenTargetRef}
+          className={
+            phase === "running"
+              ? "panel flex min-h-0 flex-1 flex-col justify-between gap-6 rounded-none border-0 border-white/[0.06] bg-surface-0 px-safe pb-safe pt-4 shadow-none sm:rounded-2xl sm:border sm:bg-[rgba(18,21,31,0.92)] sm:shadow-lift md:min-h-0 md:flex-none md:justify-center md:gap-8 md:p-6"
+              : "panel space-y-5 p-4 sm:p-5"
+          }
+        >
+          <div
+            className={
+              phase === "running"
+                ? "grid flex-1 grid-cols-2 content-center gap-x-4 gap-y-6 sm:gap-6"
+                : "grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-2"
+            }
+          >
+            <div className="col-span-2 sm:col-span-1">
               <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
                 Temps (en mouvement)
               </p>
-              <p className="mt-1 font-display text-3xl font-semibold tabular-nums text-white">
+              <p
+                className={
+                  phase === "running"
+                    ? "mt-2 font-display text-4xl font-semibold tabular-nums leading-none text-white sm:text-5xl"
+                    : "mt-1 font-display text-2xl font-semibold tabular-nums text-white sm:text-3xl"
+                }
+              >
                 {phase === "running" && !gpsClockLive
                   ? "—"
                   : formatClock(elapsedSec)}
               </p>
               {phase === "running" && !gpsClockLive ? (
-                <p className="mt-1 text-[10px] text-white/40">
-                  Accrochage GPS — le chrono démarre au premier point reçu.
+                <p className="mt-2 text-[11px] text-white/45">
+                  Accrochage GPS — chrono au 1er point.
                 </p>
               ) : phase === "running" && gpsClockLive ? (
-                <p className="mt-1 text-[10px] text-white/40">
-                  Total horloge : {formatClock(wallSec)}
+                <p className="mt-2 text-[11px] text-white/45">
+                  Total : {formatClock(wallSec)}
                   {autoPaused ? (
                     <span className="ml-1.5 text-amber-200/90">· pause auto</span>
                   ) : null}
@@ -761,27 +818,45 @@ export function LiveRunPanel({
                 </p>
               )}
             </div>
-            <div>
+            <div className="col-span-2 sm:col-span-1">
               <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
                 Distance
               </p>
-              <p className="mt-1 font-display text-3xl font-semibold tabular-nums text-white">
+              <p
+                className={
+                  phase === "running"
+                    ? "mt-2 font-display text-4xl font-semibold tabular-nums leading-none text-white sm:text-5xl"
+                    : "mt-1 font-display text-2xl font-semibold tabular-nums text-white sm:text-3xl"
+                }
+              >
                 {distKmShown.toFixed(2)} km
               </p>
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
                 Allure moyenne
               </p>
-              <p className="mt-1 font-display text-2xl font-semibold tabular-nums text-brand-ice">
+              <p
+                className={
+                  phase === "running"
+                    ? "mt-2 font-display text-2xl font-semibold tabular-nums text-brand-ice sm:text-3xl"
+                    : "mt-1 font-display text-xl font-semibold tabular-nums text-brand-ice sm:text-2xl"
+                }
+              >
                 {paceDisplay}
               </p>
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
                 Temps au km (moy.)
               </p>
-              <p className="mt-1 font-display text-2xl font-semibold tabular-nums text-white/90">
+              <p
+                className={
+                  phase === "running"
+                    ? "mt-2 font-display text-2xl font-semibold tabular-nums text-white/90 sm:text-3xl"
+                    : "mt-1 font-display text-xl font-semibold tabular-nums text-white/90 sm:text-2xl"
+                }
+              >
                 {paceSecPerKm > 0 ? formatClock(paceSecPerKm) : "—"}
               </p>
             </div>
@@ -792,7 +867,13 @@ export function LiveRunPanel({
               <span>Objectif {target.toFixed(1)} km</span>
               <span>{Math.round(progressed * 100)} %</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-white/[0.08]">
+            <div
+              className={
+                phase === "running"
+                  ? "h-2.5 overflow-hidden rounded-full bg-white/[0.1]"
+                  : "h-2 overflow-hidden rounded-full bg-white/[0.08]"
+              }
+            >
               <div
                 className="h-full rounded-full bg-gradient-to-r from-brand-orange to-brand-ice transition-[width] duration-300"
                 style={{ width: `${progressed * 100}%` }}
@@ -800,7 +881,15 @@ export function LiveRunPanel({
             </div>
           </div>
 
-          {geoOk === false ? (
+          {phase === "running" ? (
+            <p className="text-center text-[11px] text-white/45">
+              {geoOk === false
+                ? "GPS faible — vérifie les autorisations."
+                : geoOk === true
+                  ? "GPS actif"
+                  : "Recherche position…"}
+            </p>
+          ) : geoOk === false ? (
             <p className="text-xs text-amber-200/90">
               Signal GPS faible ou refusé — vérifie les autorisations.
             </p>
@@ -814,11 +903,11 @@ export function LiveRunPanel({
           )}
           {error ? <p className="text-xs text-red-200/90">{error}</p> : null}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {phase === "running" ? (
               <button
                 type="button"
-                className="btn-quiet border border-white/15 px-4 py-2 text-sm"
+                className="btn-quiet min-h-[3rem] w-full touch-manipulation border-white/20 px-4 py-3 text-sm sm:min-h-12 sm:w-auto sm:py-2.5"
                 onClick={stopRun}
               >
                 Terminer
@@ -826,7 +915,7 @@ export function LiveRunPanel({
             ) : (
               <button
                 type="button"
-                className="btn-brand px-4 py-2 text-sm"
+                className="btn-brand w-full px-4 py-2 text-sm sm:w-auto"
                 onClick={resetRun}
               >
                 Nouvelle course

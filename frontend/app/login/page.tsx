@@ -50,24 +50,34 @@ function LoginForm() {
         </p>
       }
     >
-      <form className="space-y-4" onSubmit={onSubmit}>
+      <form className="space-y-5 sm:space-y-4" onSubmit={onSubmit}>
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-white/50">Email</label>
+          <label className="mb-2 block text-sm font-medium text-white/55 sm:mb-1.5 sm:text-xs sm:text-white/50">
+            Email
+          </label>
           <input
             className="field"
             type="email"
+            inputMode="email"
             autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="next"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-white/50">Mot de passe</label>
+          <label className="mb-2 block text-sm font-medium text-white/55 sm:mb-1.5 sm:text-xs sm:text-white/50">
+            Mot de passe
+          </label>
           <input
             className="field"
             type="password"
             autoComplete="current-password"
+            enterKeyHint="go"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required

@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { Mark } from '@/components/Mark'
+import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
+import { MemberPageHeader } from '@/components/MemberPageHeader'
 import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
 import {
   adjustRaceForecast,
@@ -166,84 +168,58 @@ export default function PrevisionPage() {
   const displayLegs = adjust?.adjusted.legs ?? base?.legs ?? []
 
   return (
-    <div className="flex min-h-[100dvh]">
-      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:flex">
-        <div className="border-b border-white/[0.06] p-4">
+    <div className="flex min-h-[100dvh] overflow-x-hidden">
+      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
+        <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
           <Link href="/dashboard/" aria-label="NeuroRun">
             <Mark compact />
           </Link>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
           <MemberPrimaryNav
             active="prevision"
             capabilities={me?.capabilities}
             isAdmin={me?.role === 'admin'}
+            profileFirstName={me?.first_name}
           />
         </div>
       </aside>
 
-      {sidebarOpen ? (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
-          aria-hidden
-          onClick={() => setSidebarOpen(false)}
-        />
-      ) : null}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[min(100%,300px)] transform border-r border-white/[0.06] bg-surface-1 shadow-lift transition-transform duration-200 md:hidden ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <div className="flex items-center justify-between border-b border-white/[0.06] p-3">
-          <Link href="/dashboard/" onClick={() => setSidebarOpen(false)} aria-label="NeuroRun">
+      <MemberMobileDrawer
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        headerLeading={
+          <Link
+            href="/dashboard/"
+            onClick={() => setSidebarOpen(false)}
+            className="inline-flex"
+            aria-label="NeuroRun — tableau de bord"
+          >
             <Mark compact />
           </Link>
-          <button type="button" className="btn-quiet py-1.5 text-xs" onClick={() => setSidebarOpen(false)}>
-            Fermer
-          </button>
-        </div>
-        <div className="p-2">
+        }
+      >
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
           <MemberPrimaryNav
             active="prevision"
             onNavigate={() => setSidebarOpen(false)}
             capabilities={me?.capabilities}
             isAdmin={me?.role === 'admin'}
+            profileFirstName={me?.first_name}
           />
         </div>
-      </aside>
+      </MemberMobileDrawer>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-      <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface-0/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              className="btn-quiet py-2 text-xs md:hidden"
-              onClick={() => setSidebarOpen(true)}
-              aria-label="Ouvrir le menu"
-            >
-              Menu
-            </button>
-            <Mark className="hidden sm:flex md:hidden" compact />
-            <div className="min-w-0">
-              <p className="font-display text-sm font-medium text-white/90">Prévision</p>
-              <p className="hidden truncate text-[10px] text-white/35 sm:block">
-                Temps cibles · allure au km · FC (données Strava)
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/dashboard/" className="btn-quiet py-2 text-xs">
-              Tableau de bord
-            </Link>
-            <button type="button" className="btn-quiet py-2 text-xs" onClick={logout}>
-              Sortir
-            </button>
-          </div>
-        </div>
-      </header>
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+      <MemberPageHeader
+        title="Prévision"
+        onMenuClick={() => setSidebarOpen((o) => !o)}
+        menuOpen={sidebarOpen}
+        onLogout={logout}
+        maxWidthClass="mx-auto w-full max-w-4xl"
+      />
 
-      <main className="mx-auto w-full max-w-4xl flex-1 space-y-6 px-4 py-8 pb-16">
+      <main className="member-main-pad-b mx-auto w-full max-w-4xl flex-1 space-y-5 px-safe py-6 sm:space-y-6 sm:py-8">
         <p className="text-sm leading-relaxed text-white/55">
           Prévisions calculées sur <strong className="text-white/80">l’ensemble de tes sorties course Strava</strong>{' '}
           (tranches proches du 5 km, 10 km, semi et marathon). Tu peux indiquer ton ressenti et une blessure : un clic sur{' '}
@@ -263,7 +239,7 @@ export default function PrevisionPage() {
           <div className="panel space-y-4 p-5">
             <h2 className="font-display text-sm font-semibold text-white">Ton état du moment</h2>
             <p className="text-[11px] text-white/40">Sert à calibrer l’ajustement (ressenti + blessure).</p>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <div className="member-scroll-x -mx-1 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
               {(
                 [
                   { id: 'great' as const, label: 'Plutôt en forme' },
@@ -275,7 +251,7 @@ export default function PrevisionPage() {
                   key={o.id}
                   type="button"
                   onClick={() => setEnergy(o.id)}
-                  className={`rounded-xl px-3 py-2 text-left text-xs font-medium transition ${
+                  className={`shrink-0 rounded-xl px-3 py-2 text-left text-xs font-medium transition ${
                     energy === o.id
                       ? 'bg-brand-orange/25 text-white ring-1 ring-brand-orange/45'
                       : 'border border-white/10 bg-white/[0.04] text-white/65 hover:border-white/20'
@@ -294,12 +270,12 @@ export default function PrevisionPage() {
               />
               Je suis blessé ou je dois ménager une zone (ajustement plus prudent)
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <button
                 type="button"
                 disabled={adjLoading}
                 onClick={() => void onAdjust()}
-                className="btn-brand px-4 py-2.5 text-xs disabled:opacity-40"
+                className="btn-brand w-full px-4 py-2.5 text-xs disabled:opacity-40 sm:w-auto"
               >
                 {adjLoading ? 'Ajustement…' : 'Adapter mes pronostics'}
               </button>
@@ -307,12 +283,16 @@ export default function PrevisionPage() {
                 <button
                   type="button"
                   onClick={() => setAdjust(null)}
-                  className="btn-quiet px-4 py-2.5 text-xs"
+                  className="btn-quiet w-full px-4 py-2.5 text-xs sm:w-auto"
                 >
                   Revenir aux prévisions brutes
                 </button>
               ) : null}
-              <button type="button" onClick={() => void load()} className="btn-quiet px-4 py-2.5 text-xs">
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="btn-quiet w-full px-4 py-2.5 text-xs sm:w-auto"
+              >
                 Rafraîchir Strava
               </button>
             </div>
@@ -417,8 +397,8 @@ function LegCard({
           <p className="mt-1 text-[11px] text-white/40">
             Répartition en allure constante (même temps par km, dernière ligne = fraction restante si besoin).
           </p>
-          <div className="mt-3 max-h-[280px] overflow-auto rounded-xl border border-white/[0.06]">
-            <table className="w-full text-left text-xs">
+          <div className="member-scroll-x mt-3 max-h-[min(50vh,280px)] overflow-auto rounded-xl border border-white/[0.06] sm:max-h-[280px]">
+            <table className="w-full min-w-[320px] text-left text-xs">
               <thead className="sticky top-0 bg-surface-2/95 text-[10px] uppercase tracking-wide text-white/45">
                 <tr>
                   <th className="px-3 py-2">Segment</th>

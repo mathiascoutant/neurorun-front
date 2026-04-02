@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
+import { MemberPageHeader } from '@/components/MemberPageHeader'
 import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
 import {
   Bar,
@@ -97,19 +99,22 @@ function PaceBlock({
     <div className="panel p-5">
       <h3 className="font-display text-sm font-semibold text-white">{title}</h3>
       <p className="mt-1 text-[11px] text-white/40">{subtitle}</p>
-      <div className="mt-4 h-[260px] w-full min-w-0">
+      <div className="mt-4 h-[200px] w-full min-w-0 sm:h-[240px] md:h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+          <LineChart data={rows} margin={{ top: 8, right: 4, left: -8, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
             <XAxis
               dataKey="label"
-              tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }}
+              tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 9 }}
               interval="preserveStartEnd"
+              angle={-35}
+              textAnchor="end"
+              height={48}
             />
             <YAxis
-              tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }}
+              tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 9 }}
               tickFormatter={(v) => formatPaceDecimal(Number(v))}
-              width={56}
+              width={48}
             />
             <Tooltip
               {...tip}
@@ -205,95 +210,66 @@ export function RunDashboard() {
   }))
 
   return (
-    <div className="flex min-h-[100dvh]">
-      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:flex">
-        <div className="border-b border-white/[0.06] p-4">
+    <div className="flex min-h-[100dvh] overflow-x-hidden">
+      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:sticky md:top-0 md:flex md:max-h-[100dvh] md:h-screen">
+        <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
           <Link href="/dashboard/" aria-label="NeuroRun">
             <Mark compact />
           </Link>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
           <MemberPrimaryNav
             active="dashboard"
             capabilities={me.capabilities}
             isAdmin={me.role === 'admin'}
+            profileFirstName={me.first_name}
           />
         </div>
       </aside>
 
-      {sidebarOpen ? (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
-          aria-hidden
-          onClick={() => setSidebarOpen(false)}
-        />
-      ) : null}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[min(100%,300px)] transform border-r border-white/[0.06] bg-surface-1 shadow-lift transition-transform duration-200 md:hidden ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <div className="flex items-center justify-between border-b border-white/[0.06] p-3">
-          <Link href="/dashboard/" onClick={() => setSidebarOpen(false)} aria-label="NeuroRun">
+      <MemberMobileDrawer
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        headerLeading={
+          <Link
+            href="/dashboard/"
+            onClick={() => setSidebarOpen(false)}
+            className="inline-flex"
+            aria-label="NeuroRun — tableau de bord"
+          >
             <Mark compact />
           </Link>
-          <button type="button" className="btn-quiet py-1.5 text-xs" onClick={() => setSidebarOpen(false)}>
-            Fermer
-          </button>
-        </div>
-        <div className="p-2">
+        }
+      >
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
           <MemberPrimaryNav
             active="dashboard"
             onNavigate={() => setSidebarOpen(false)}
             capabilities={me.capabilities}
             isAdmin={me.role === 'admin'}
+            profileFirstName={me.first_name}
           />
         </div>
-      </aside>
+      </MemberMobileDrawer>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
         {!stravaLinked && stravaOffer ? <StravaLinkBanner /> : null}
-        <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface-0/85 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <button
-                type="button"
-                className="btn-quiet py-2 text-xs md:hidden"
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Ouvrir le menu"
-              >
-                Menu
-              </button>
-              <Mark className="hidden sm:flex md:hidden" compact />
-              <div className="min-w-0">
-                <p className="font-display text-sm font-medium text-white/90">Tableau de bord</p>
-                <p className="hidden truncate text-[10px] text-white/35 sm:block">
-                  Strava — volume, allure, fréquence cardiaque
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {stravaOffer ? (
-                <Link href="/link-strava/" className="btn-quiet hidden py-2 text-xs sm:inline-flex">
-                  Strava
-                </Link>
-              ) : null}
-              <button type="button" className="btn-quiet py-2 text-xs" onClick={logout}>
-                Sortir
-              </button>
-            </div>
-          </div>
-        </header>
+        <MemberPageHeader
+          title="Tableau de bord"
+          onMenuClick={() => setSidebarOpen((o) => !o)}
+          menuOpen={sidebarOpen}
+          onLogout={logout}
+        />
 
-        <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-8 pb-16">
+        <main className="member-main-pad-b mx-auto w-full max-w-6xl flex-1 space-y-5 px-safe py-6 sm:space-y-6 sm:py-8">
         {stravaLinked && stravaOffer ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="-mx-1 member-scroll-x flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
           {PERIODS.map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => setPeriod(p.id)}
-              className={`rounded-xl px-3 py-2 text-xs font-medium transition ${
+              className={`shrink-0 rounded-xl px-3 py-2 text-xs font-medium transition ${
                 period === p.id
                   ? 'bg-brand-orange/25 text-white ring-1 ring-brand-orange/45'
                   : 'border border-white/10 bg-white/[0.04] text-white/60 hover:border-white/20 hover:text-white/85'
@@ -341,7 +317,7 @@ export function RunDashboard() {
 
         {!loading && data ? (
           <>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
               <div className="panel p-4">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">Distance totale</p>
                 <p className="mt-1 font-display text-2xl font-semibold text-white">{data.total_km} km</p>
@@ -367,20 +343,28 @@ export function RunDashboard() {
               {weeklyRows.length === 0 ? (
                 <p className="mt-6 text-sm text-white/45">Pas de données sur cette période.</p>
               ) : (
-                <div className="mt-4 h-[300px] w-full min-w-0">
+                <div className="mt-4 h-[220px] w-full min-w-0 sm:h-[280px] md:h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={weeklyRows} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
+                    <ComposedChart data={weeklyRows} margin={{ top: 8, right: 4, left: -12, bottom: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="week_short" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
+                      <XAxis
+                        dataKey="week_short"
+                        tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 9 }}
+                        angle={-30}
+                        textAnchor="end"
+                        height={52}
+                      />
                       <YAxis
                         yAxisId="km"
-                        tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }}
-                        label={{ value: 'km', fill: 'rgba(255,255,255,0.35)', fontSize: 10, angle: -90, position: 'insideLeft' }}
+                        width={36}
+                        tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 9 }}
+                        label={{ value: 'km', fill: 'rgba(255,255,255,0.35)', fontSize: 9, angle: -90, position: 'insideLeft' }}
                       />
                       <YAxis
                         yAxisId="hr"
                         orientation="right"
-                        tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }}
+                        width={40}
+                        tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 9 }}
                         domain={['auto', 'auto']}
                       />
                       <Tooltip
@@ -433,7 +417,7 @@ export function RunDashboard() {
               )}
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
               <PaceBlock
                 title="Évolution allure (~5 km)"
                 subtitle="Sorties entre 4,2 et 6,8 km — allure moyenne Strava."
@@ -462,7 +446,7 @@ export function RunDashboard() {
           </>
         ) : null}
 
-        <p className="text-[11px] leading-relaxed text-white/35">
+        <p className="text-[10px] leading-relaxed text-white/35 sm:text-[11px]">
           Période « Depuis le début » : jusqu’à environ 9 000 sorties récupérées (pagination Strava). Les tranches
           distance sont indicatives. La FC dépend du capteur Strava ; semaines sans ligne FC = pas de données
           pondérées. Utilise l’onglet <span className="text-white/55">Coach</span> dans le menu pour parler à l’IA,

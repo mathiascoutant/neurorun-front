@@ -227,7 +227,7 @@ export function GoalsPanel() {
 
   if (wizardOpen) {
     return (
-      <div className="mx-auto w-full max-w-lg space-y-6 px-4 py-6">
+      <div className="mx-auto w-full max-w-lg space-y-6 px-safe py-6">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display text-lg font-semibold">Nouvel objectif</h2>
           <button
@@ -408,7 +408,7 @@ export function GoalsPanel() {
 
   const listAside = (
     <aside
-      className={`panel w-full shrink-0 p-4 ${detail ? 'lg:w-56 xl:w-60' : 'lg:w-72'}`}
+      className={`panel w-full shrink-0 p-4 sm:p-5 ${detail ? 'lg:w-56 xl:w-60' : 'lg:w-72'}`}
     >
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-display text-sm font-semibold">Tes objectifs</h2>
@@ -451,8 +451,8 @@ export function GoalsPanel() {
 
   return (
     <div
-      className={`mx-auto flex w-full flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start ${
-        detail ? 'max-w-[min(100%,1520px)] xl:px-6' : 'max-w-3xl'
+      className={`mx-auto flex w-full flex-col gap-5 px-safe py-5 sm:gap-6 sm:py-6 lg:flex-row lg:items-start ${
+        detail ? 'max-w-[min(100%,1520px)]' : 'max-w-3xl'
       }`}
     >
       {listAside}
@@ -464,8 +464,8 @@ export function GoalsPanel() {
         ) : (
           <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:gap-5">
             {/* Colonne plan : tuile « détail » puis tuile « calendrier » (scrolls séparés) */}
-            <div className="flex w-full min-w-0 flex-col gap-6 lg:w-[min(100%,440px)] lg:shrink-0 xl:w-[min(100%,480px)]">
-              <article className="panel flex min-h-0 w-full flex-col p-5 sm:p-6 lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto">
+            <div className="flex w-full min-w-0 flex-col gap-5 sm:gap-6 lg:w-[min(100%,440px)] lg:shrink-0 xl:w-[min(100%,480px)]">
+              <article className="panel flex min-h-0 w-full flex-col p-4 sm:p-6 lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto">
                 <header className="flex flex-col gap-3 border-b border-white/[0.06] pb-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <h3 className="font-display text-lg font-semibold text-white">{detail.distance_label}</h3>
@@ -514,7 +514,7 @@ export function GoalsPanel() {
               </article>
 
               {authToken ? (
-                <article className="panel flex min-h-[16rem] min-w-0 max-h-[min(78dvh,42rem)] flex-col overflow-hidden p-5 sm:p-6 lg:max-h-[calc(100dvh-10rem)]">
+                <article className="panel flex min-h-[14rem] min-w-0 max-h-[min(70dvh,42rem)] flex-col overflow-hidden p-4 sm:min-h-[16rem] sm:p-6 lg:max-h-[calc(100dvh-10rem)]">
                   <GoalTrainingCalendar
                     goalId={detail.id}
                     token={authToken}
@@ -525,7 +525,7 @@ export function GoalsPanel() {
             </div>
 
             {/* Coach : prend le reste de la largeur — bulles IA plus larges, zone de scroll plus haute */}
-            <section className="panel flex min-h-0 w-full min-w-0 flex-1 flex-col p-5 sm:p-6 lg:max-h-[calc(100dvh-9rem)]">
+            <section className="panel flex min-h-0 w-full min-w-0 flex-1 flex-col p-4 sm:p-6 lg:max-h-[calc(100dvh-9rem)]">
               <h4 className="font-display text-sm font-semibold text-white">Discussion avec le coach</h4>
               <p className="mt-1.5 text-xs leading-relaxed text-white/45">
                 Partage ton ressenti (énergie, sommeil, stress), des douleurs ou une gêne, ou demande à alléger ou

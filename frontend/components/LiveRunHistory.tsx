@@ -134,7 +134,7 @@ export function LiveRunHistory({
   }
 
   return (
-    <div className="panel p-5 space-y-4">
+    <div className="panel space-y-4 p-4 sm:p-5">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 className="font-display text-sm font-semibold text-white">
@@ -182,20 +182,25 @@ export function LiveRunHistory({
               >
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04]"
+                  className="flex w-full items-start justify-between gap-2 px-3 py-3 text-left transition hover:bg-white/[0.04] sm:items-center sm:gap-3 sm:px-4"
                   onClick={() => void toggleOpen(r.id)}
                   aria-expanded={expanded}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="font-display text-[13px] font-medium text-white/95">
+                    <p className="font-display text-[12px] font-medium leading-snug text-white/95 sm:text-[13px]">
                       {formatWhen(r.created_at)}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-white/45">
-                      {(r.distance_m / 1000).toFixed(2)} km · en mouvement{" "}
-                      {formatClock(r.moving_sec)} · allure moy.{" "}
-                      {formatPaceMinPerKm(r.avg_pace_sec_per_km)} · objectif{" "}
-                      {r.target_km.toFixed(1)} km · {r.split_count} split
-                      {r.split_count > 1 ? "s" : ""}
+                    <p className="mt-1 text-[10px] leading-relaxed text-white/45 sm:mt-0.5 sm:text-[11px]">
+                      {(r.distance_m / 1000).toFixed(2)} km · {formatClock(r.moving_sec)} ·{' '}
+                      {formatPaceMinPerKm(r.avg_pace_sec_per_km)}
+                      <span className="hidden sm:inline">
+                        {' '}
+                        · objectif {r.target_km.toFixed(1)} km · {r.split_count} split
+                        {r.split_count > 1 ? 's' : ''}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-white/35 sm:hidden">
+                      Objectif {r.target_km.toFixed(1)} km · {r.split_count} split{r.split_count > 1 ? 's' : ''}
                     </p>
                   </div>
                   <span className="shrink-0 text-[10px] text-white/35">
@@ -204,7 +209,7 @@ export function LiveRunHistory({
                 </button>
 
                 {expanded ? (
-                  <div className="border-t border-white/[0.06] px-4 py-4">
+                  <div className="border-t border-white/[0.06] px-3 py-4 sm:px-4">
                     {dLoading ? (
                       <p className="text-xs text-white/45">Chargement du détail…</p>
                     ) : detailError && !detail ? (
