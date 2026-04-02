@@ -191,22 +191,28 @@ export default function HomePage() {
       </div>
 
       <header className="sticky top-0 z-20 border-b border-white/[0.04] bg-surface-0/75 pt-safe backdrop-blur-2xl supports-[backdrop-filter]:bg-surface-0/55">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-safe py-3 sm:gap-4 sm:px-8 sm:py-3.5">
-          <Link href="/" className="transition hover:opacity-90">
-            <Mark />
+        <div className="mx-auto flex max-w-6xl flex-nowrap items-center justify-between gap-2 px-safe py-3 sm:gap-4 sm:px-8 sm:py-3.5">
+          <Link href="/" className="min-w-0 shrink transition hover:opacity-90">
+            <span className="sm:hidden">
+              <Mark compact />
+            </span>
+            <span className="hidden sm:block">
+              <Mark />
+            </span>
           </Link>
-          <nav className="flex shrink-0 items-center gap-2 sm:gap-3" aria-label="Accès rapide">
+          <nav className="flex shrink-0 items-center gap-1.5 sm:gap-3" aria-label="Accès rapide">
             <Link
               href="/login/"
-              className="rounded-full px-4 py-2 text-xs font-medium text-white/65 transition hover:bg-white/[0.06] hover:text-white sm:text-sm"
+              className="whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-medium text-white/65 transition hover:bg-white/[0.06] hover:text-white sm:px-4 sm:py-2 sm:text-sm"
             >
               Connexion
             </Link>
             <a
               href="#offres"
-              className="inline-flex items-center justify-center rounded-full border border-white/[0.14] bg-white/[0.04] px-4 py-2 text-xs font-medium text-white/80 transition hover:border-white/25 hover:bg-white/[0.07] hover:text-white sm:text-sm"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-white/[0.14] bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-white/80 transition hover:border-white/25 hover:bg-white/[0.07] hover:text-white sm:px-4 sm:py-2 sm:text-sm"
             >
-              Voir les offres
+              <span className="sm:hidden">Offres</span>
+              <span className="hidden sm:inline">Voir les offres</span>
             </a>
           </nav>
         </div>
