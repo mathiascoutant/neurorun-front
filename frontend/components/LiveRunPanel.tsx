@@ -303,8 +303,10 @@ export function LiveRunPanel({
   const [gpsClockLive, setGpsClockLive] = useState(false);
   const [autoPaused, setAutoPaused] = useState(false);
 
-  /** 0 = chrono pas encore démarré. Sinon = timestamp du 1er fix (`position.timestamp`, pas Date.now). */
+  /** 0 = pas encore démarré. Sinon = `position.timestamp` du 1er fix (payload / points GPS). */
   const gpsStartTsMsRef = useRef(0);
+  /** Base horloge murale au 1er fix (`Date.now()`), alignée sur le temps « en mouvement ». */
+  const runClockStartMsRef = useRef(0);
   const movingSecRef = useRef(0);
   const lastTickMsRef = useRef(0);
   const pausedRef = useRef(false);
@@ -443,6 +445,7 @@ export function LiveRunPanel({
     lastLonRef.current = null;
     lastAnnouncedKmRef.current = 0;
     gpsStartTsMsRef.current = 0;
+    runClockStartMsRef.current = 0;
     movingSecRef.current = 0;
     lastTickMsRef.current = 0;
     pausedRef.current = false;
@@ -464,9 +467,11 @@ export function LiveRunPanel({
     const armChronoOnFirstFix = (pos: GeolocationPosition) => {
       if (gpsStartTsMsRef.current > 0) return;
       const ts = pos.timestamp;
+      const clock0 = Date.now();
       gpsStartTsMsRef.current = ts;
+      runClockStartMsRef.current = clock0;
       lastKmCrossingMsRef.current = ts;
-      lastTickMsRef.current = Date.now();
+      lastTickMsRef.current = clock0;
       movingSecRef.current = 0;
       trackPointsRef.current = [positionToTrackPoint(pos)];
       setGpsClockLive(true);
@@ -491,9 +496,9 @@ export function LiveRunPanel({
     };
 
     tickRef.current = setInterval(() => {
-      const base = gpsStartTsMsRef.current;
+      const clock0 = runClockStartMsRef.current;
       const now = Date.now();
-      if (base <= 0) {
+      if (clock0 <= 0) {
         setElapsedSec(0);
         setWallSec(0);
       } else {
@@ -506,7 +511,7 @@ export function LiveRunPanel({
         }
         lastTickMsRef.current = now;
         setElapsedSec(movingSecRef.current);
-        setWallSec(Math.max(0, (now - base) / 1000));
+        setWallSec(Math.max(0, (now - clock0) / 1000));
       }
       setMetricsTick((n) => n + 1);
     }, 200);
@@ -629,16 +634,17 @@ export function LiveRunPanel({
   }, [targetKm]);
 
   const stopRun = useCallback(() => {
-    const base = gpsStartTsMsRef.current;
+    const gpsStart = gpsStartTsMsRef.current;
+    const clock0 = runClockStartMsRef.current;
     const now = Date.now();
     let wallFinal = 0;
-    if (base > 0 && lastTickMsRef.current > 0) {
+    if (clock0 > 0 && lastTickMsRef.current > 0) {
       const dt = (now - lastTickMsRef.current) / 1000;
       if (dt > 0 && dt < 5 && !pausedRef.current) {
         movingSecRef.current += dt;
       }
       setElapsedSec(movingSecRef.current);
-      wallFinal = Math.max(0, (now - base) / 1000);
+      wallFinal = Math.max(0, (now - clock0) / 1000);
       setWallSec(wallFinal);
     }
     const movingFinal = movingSecRef.current;
@@ -656,7 +662,7 @@ export function LiveRunPanel({
     const token = getToken();
     if (
       !token ||
-      base <= 0 ||
+      gpsStart <= 0 ||
       (distM < 1 && movingFinal < 3)
     ) {
       setServerSave("skipped");
@@ -672,7 +678,7 @@ export function LiveRunPanel({
       distance_m: distM,
       moving_sec: movingFinal,
       wall_sec: wallFinal,
-      gps_start_ts_ms: base,
+      gps_start_ts_ms: gpsStart,
       gps_end_ts_ms: gpsEndMs,
       avg_pace_sec_per_km: avgPace,
       max_implied_speed_kmh: maxImpliedKmhRef.current,
@@ -707,6 +713,7 @@ export function LiveRunPanel({
     accMRef.current = 0;
     lastDistanceUiBucketRef.current = 0;
     gpsStartTsMsRef.current = 0;
+    runClockStartMsRef.current = 0;
     movingSecRef.current = 0;
     pausedRef.current = false;
     speedBufRef.current = [];
@@ -736,6 +743,11 @@ export function LiveRunPanel({
             <strong className="font-medium text-cyan-50/95">GPS</strong> (géolocalisation navigateur / puce GNSS) — pas
             de carte en ligne ni d’envoi de points pendant la course. Les annonces vocales utilisent la synthèse
             intégrée au téléphone. Le suivi reste le même avec ou sans réseau.
+          </p>
+          <p className="mt-2 text-[11px] text-cyan-100/70">
+            Précision : pas de podomètre — distance = somme des segments GPS (haversine). En dessous de ~400–500 m ou au
+            pas très lent, l’allure affichée peut s’écarter d’une montre ou de Strava ; compare surtout sur des sorties
+            plus longues.
           </p>
         </div>
       ) : null}

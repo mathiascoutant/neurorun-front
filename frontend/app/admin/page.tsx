@@ -8,16 +8,26 @@ import {
   adminCreatePromo,
   adminDeletePromo,
   adminDeleteUser,
+  adminDeleteCircuit,
+  adminDeleteCircuitTime,
   adminGetOfferConfig,
+  adminGetUser,
+  adminListCircuitTimes,
+  adminListCircuits,
   adminListPromos,
   adminListUsers,
+  adminPatchCircuit,
   adminPatchPromo,
   adminPatchUser,
   adminPutOfferConfig,
+  adminSearchCircuitTimesByUser,
   adminStats,
   ApiError,
   type AdminStats,
   type AdminUserRow,
+  type LiveRunListItem,
+  type AdminCircuitTimeRow,
+  type CircuitSummary,
   type OfferConfigPayload,
   type PromoCodeRow,
   fetchMe,
@@ -25,10 +35,45 @@ import {
 } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 
-type Tab = 'stats' | 'users' | 'promos' | 'offers'
+type Tab = 'stats' | 'users' | 'promos' | 'offers' | 'circuits'
 
 const PLANS = ['standard', 'strava', 'performance'] as const
 const ROLES = ['user', 'admin'] as const
+
+function formatRunClock(totalSec: number): string {
+  if (!Number.isFinite(totalSec) || totalSec < 0) return '0:00'
+  const s = Math.floor(totalSec)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const r = s % 60
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${r.toString().padStart(2, '0')}`
+  }
+  return `${m}:${r.toString().padStart(2, '0')}`
+}
+
+function formatRunPace(secPerKm: number): string {
+  if (!Number.isFinite(secPerKm) || secPerKm <= 0) return '—'
+  const m = Math.floor(secPerKm / 60)
+  const s = Math.round(secPerKm % 60)
+  return `${m}:${s.toString().padStart(2, '0')}/km`
+}
+
+function formatRunWhen(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleString('fr-FR', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
 
 export default function AdminPage() {
   const router = useRouter()
@@ -45,6 +90,22 @@ export default function AdminPage() {
   const [editRole, setEditRole] = useState('')
   const [editPlan, setEditPlan] = useState('')
   const [editBusy, setEditBusy] = useState(false)
+  const [inspectUser, setInspectUser] = useState<AdminUserRow | null>(null)
+  const [inspectRuns, setInspectRuns] = useState<LiveRunListItem[] | null>(null)
+  const [inspectRunsTotal, setInspectRunsTotal] = useState<number | null>(null)
+  const [inspectGoalsCount, setInspectGoalsCount] = useState<number | null>(null)
+  const [inspectLoading, setInspectLoading] = useState(false)
+  const [circuitQ, setCircuitQ] = useState('')
+  const [circuitList, setCircuitList] = useState<(CircuitSummary & { created_by?: string })[]>([])
+  const [circuitTotal, setCircuitTotal] = useState(0)
+  const [circuitPick, setCircuitPick] = useState<string | null>(null)
+  const [circuitTimes, setCircuitTimes] = useState<AdminCircuitTimeRow[]>([])
+  const [circuitTimesTotal, setCircuitTimesTotal] = useState(0)
+  const [searchFn, setSearchFn] = useState('')
+  const [searchLn, setSearchLn] = useState('')
+  const [searchTimes, setSearchTimes] = useState<AdminCircuitTimeRow[]>([])
+  const [searchTotal, setSearchTotal] = useState(0)
+  const [editCircuitName, setEditCircuitName] = useState('')
 
   useEffect(() => {
     const t = getToken()
@@ -89,12 +150,67 @@ export default function AdminPage() {
         } else if (tab === 'offers') {
           const c = await adminGetOfferConfig(t)
           setOfferCfg(c)
+        } else if (tab === 'circuits') {
+          const r = await adminListCircuits(t, '', 0, 120)
+          setCircuitList(r.circuits ?? [])
+          setCircuitTotal(r.total)
         }
       } catch (e) {
         setErr(e instanceof Error ? e.message : 'Erreur')
       }
     })()
   }, [me, tab])
+
+  useEffect(() => {
+    if (!me || tab !== 'circuits' || !circuitPick) {
+      setCircuitTimes([])
+      setCircuitTimesTotal(0)
+      return
+    }
+    const t = getToken()
+    if (!t) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await adminListCircuitTimes(t, circuitPick, 0, 500)
+        if (!cancelled) {
+          setCircuitTimes(r.times ?? [])
+          setCircuitTimesTotal(r.total)
+        }
+      } catch {
+        if (!cancelled) setCircuitTimes([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [me, tab, circuitPick])
+
+  async function refreshCircuitList() {
+    const t = getToken()
+    if (!t) return
+    setErr('')
+    try {
+      const r = await adminListCircuits(t, circuitQ, 0, 120)
+      setCircuitList(r.circuits ?? [])
+      setCircuitTotal(r.total)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erreur')
+    }
+  }
+
+  async function runUserTimeSearch() {
+    const t = getToken()
+    if (!t) return
+    setErr('')
+    try {
+      const r = await adminSearchCircuitTimesByUser(t, searchFn, searchLn, 0, 100)
+      setSearchTimes(r.times ?? [])
+      setSearchTotal(r.total)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erreur')
+    }
+  }
 
   async function saveOffers(e: FormEvent) {
     e.preventDefault()
@@ -125,6 +241,7 @@ export default function AdminPage() {
         live_runs: false,
         forecast: false,
         circuit: false,
+        circuit_tracks: false,
       }
       tiers[tier] = { ...cur, [key]: value }
       return { ...prev, tiers }
@@ -135,6 +252,36 @@ export default function AdminPage() {
     setEditUser(u)
     setEditRole(u.role)
     setEditPlan(u.plan)
+  }
+
+  function closeInspectUser() {
+    setInspectUser(null)
+    setInspectRuns(null)
+    setInspectRunsTotal(null)
+    setInspectGoalsCount(null)
+    setInspectLoading(false)
+  }
+
+  async function openInspectUser(u: AdminUserRow) {
+    const t = getToken()
+    if (!t) return
+    setInspectUser(u)
+    setInspectRuns(null)
+    setInspectRunsTotal(null)
+    setInspectGoalsCount(null)
+    setInspectLoading(true)
+    setErr('')
+    try {
+      const d = await adminGetUser(t, u.id)
+      setInspectRuns(d.live_runs ?? [])
+      setInspectRunsTotal(d.runs_count ?? 0)
+      setInspectGoalsCount(d.goals_count ?? 0)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erreur')
+      closeInspectUser()
+    } finally {
+      setInspectLoading(false)
+    }
   }
 
   async function submitEditUser(e: FormEvent) {
@@ -204,7 +351,7 @@ export default function AdminPage() {
             <Mark />
           </Link>
           <nav className="flex flex-wrap gap-2">
-            {(['stats', 'users', 'promos', 'offers'] as const).map((id) => (
+            {(['stats', 'users', 'promos', 'offers', 'circuits'] as const).map((id) => (
               <button
                 key={id}
                 type="button"
@@ -217,6 +364,7 @@ export default function AdminPage() {
                 {id === 'users' && 'Utilisateurs'}
                 {id === 'promos' && 'Codes promo'}
                 {id === 'offers' && 'Offres'}
+                {id === 'circuits' && 'Parcours'}
               </button>
             ))}
           </nav>
@@ -337,7 +485,15 @@ export default function AdminPage() {
               <tbody>
                 {users.map((u) => (
                   <tr key={u.id} className="border-b border-white/[0.04] text-white/80">
-                    <td className="px-4 py-2.5">{u.email}</td>
+                    <td className="px-4 py-2.5">
+                      <button
+                        type="button"
+                        className="text-left text-brand-ice hover:underline"
+                        onClick={() => void openInspectUser(u)}
+                      >
+                        {u.email}
+                      </button>
+                    </td>
                     <td className="px-4 py-2.5">{u.role}</td>
                     <td className="px-4 py-2.5">{u.plan}</td>
                     <td className="px-4 py-2.5">{u.strava_linked ? 'oui' : 'non'}</td>
@@ -420,7 +576,8 @@ export default function AdminPage() {
                       ['goals', 'Objectifs & plans'],
                       ['live_runs', 'Course GPS (live)'],
                       ['forecast', 'Prévision course'],
-                      ['circuit', 'Calendrier / circuit'],
+                      ['circuit', 'Calendrier (objectif)'],
+                      ['circuit_tracks', 'Parcours GPS + classements'],
                     ] as const
                   ).map(([key, label]) => (
                     <label key={key} className="flex cursor-pointer items-center gap-3 text-sm text-white/80">
@@ -496,7 +653,299 @@ export default function AdminPage() {
             </button>
           </form>
         ) : null}
+
+        {tab === 'circuits' ? (
+          <div className="space-y-8">
+            <div className="panel p-6">
+              <h2 className="font-display text-lg font-semibold text-white">Parcours enregistrés</h2>
+              <p className="mt-1 text-xs text-white/45">
+                Recherche par nom, liste des temps, suppression d’un chrono douteux, renommage ou suppression d’un
+                parcours.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <input
+                  className="field max-w-xs flex-1"
+                  placeholder="Filtrer par nom de parcours"
+                  value={circuitQ}
+                  onChange={(e) => setCircuitQ(e.target.value)}
+                />
+                <button type="button" className="btn-brand px-4 py-2 text-xs" onClick={() => void refreshCircuitList()}>
+                  Rechercher
+                </button>
+              </div>
+              <p className="mt-2 text-[10px] text-white/35">{circuitTotal} parcours</p>
+              <ul className="mt-4 max-h-56 space-y-2 overflow-y-auto text-sm">
+                {circuitList.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                        circuitPick === c.id ? 'border-brand-orange/45 bg-brand-orange/10' : 'border-white/10 bg-white/[0.03]'
+                      }`}
+                      onClick={() => {
+                        setCircuitPick(c.id)
+                        setEditCircuitName(c.name)
+                      }}
+                    >
+                      <span className="font-medium text-white">{c.name}</span>
+                      <span className="mt-0.5 block text-[10px] text-white/40">{c.id}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {circuitPick ? (
+              <div className="panel p-6">
+                <h3 className="font-display text-base font-semibold text-white">Modifier le parcours</h3>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <input
+                    className="field max-w-md flex-1"
+                    value={editCircuitName}
+                    onChange={(e) => setEditCircuitName(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-brand px-4 py-2 text-xs"
+                    onClick={async () => {
+                      const t = getToken()
+                      if (!t || !circuitPick) return
+                      setErr('')
+                      try {
+                        await adminPatchCircuit(t, circuitPick, { name: editCircuitName })
+                        await refreshCircuitList()
+                      } catch (e) {
+                        setErr(e instanceof Error ? e.message : 'Erreur')
+                      }
+                    }}
+                  >
+                    Enregistrer le nom
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-xl border border-red-500/35 px-4 py-2 text-xs text-red-200/95 hover:bg-red-500/10"
+                    onClick={async () => {
+                      if (!circuitPick || !confirm('Supprimer ce parcours et tous les temps associés ?')) return
+                      const t = getToken()
+                      if (!t) return
+                      setErr('')
+                      try {
+                        await adminDeleteCircuit(t, circuitPick)
+                        setCircuitPick(null)
+                        await refreshCircuitList()
+                      } catch (e) {
+                        setErr(e instanceof Error ? e.message : 'Erreur')
+                      }
+                    }}
+                  >
+                    Supprimer le parcours
+                  </button>
+                </div>
+                <h4 className="mt-6 text-sm font-semibold text-white/90">Tous les temps ({circuitTimesTotal})</h4>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full min-w-[520px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-white/[0.06] text-[11px] uppercase text-white/40">
+                        <th className="py-2 pr-3">Temps</th>
+                        <th className="py-2 pr-3">Coureur</th>
+                        <th className="py-2 pr-3">Date</th>
+                        <th className="py-2">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {circuitTimes.map((row) => (
+                        <tr key={row.id} className="border-b border-white/[0.04] text-white/80">
+                          <td className="py-2 pr-3 font-mono">{formatRunClock(Math.floor(row.duration_ms / 1000))}</td>
+                          <td className="py-2 pr-3">{row.display_name ?? row.user_id}</td>
+                          <td className="py-2 pr-3 text-xs text-white/50">{formatRunWhen(row.created_at)}</td>
+                          <td className="py-2">
+                            <button
+                              type="button"
+                              className="text-xs text-red-300/95 hover:underline"
+                              onClick={async () => {
+                                if (!confirm('Supprimer ce temps ?')) return
+                                const t = getToken()
+                                if (!t) return
+                                try {
+                                  await adminDeleteCircuitTime(t, row.id)
+                                  const r = await adminListCircuitTimes(t, circuitPick!, 0, 500)
+                                  setCircuitTimes(r.times ?? [])
+                                  setCircuitTimesTotal(r.total)
+                                } catch (e) {
+                                  setErr(e instanceof Error ? e.message : 'Erreur')
+                                }
+                              }}
+                            >
+                              Supprimer
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="panel p-6">
+              <h3 className="font-display text-base font-semibold text-white">Recherche par coureur</h3>
+              <p className="mt-1 text-xs text-white/45">Prénom et/ou nom (contient, insensible à la casse).</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <input
+                  className="field w-40"
+                  placeholder="Prénom"
+                  value={searchFn}
+                  onChange={(e) => setSearchFn(e.target.value)}
+                />
+                <input
+                  className="field w-40"
+                  placeholder="Nom"
+                  value={searchLn}
+                  onChange={(e) => setSearchLn(e.target.value)}
+                />
+                <button type="button" className="btn-brand px-4 py-2 text-xs" onClick={() => void runUserTimeSearch()}>
+                  Chercher les temps
+                </button>
+              </div>
+              <p className="mt-2 text-[10px] text-white/35">{searchTotal} résultat(s)</p>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[640px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-white/[0.06] text-[11px] uppercase text-white/40">
+                      <th className="py-2 pr-3">Parcours</th>
+                      <th className="py-2 pr-3">Temps</th>
+                      <th className="py-2 pr-3">Personne</th>
+                      <th className="py-2 pr-3">Date</th>
+                      <th className="py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {searchTimes.map((row) => (
+                      <tr key={row.id} className="border-b border-white/[0.04] text-white/80">
+                        <td className="py-2 pr-3">{row.circuit_name || row.circuit_id}</td>
+                        <td className="py-2 pr-3 font-mono">{formatRunClock(Math.floor(row.duration_ms / 1000))}</td>
+                        <td className="py-2 pr-3 text-xs">
+                          {row.display_name ?? '—'}
+                          {row.email ? <span className="block text-white/40">{row.email}</span> : null}
+                        </td>
+                        <td className="py-2 pr-3 text-xs text-white/50">{formatRunWhen(row.created_at)}</td>
+                        <td className="py-2">
+                          <button
+                            type="button"
+                            className="text-xs text-red-300/95 hover:underline"
+                            onClick={async () => {
+                              if (!confirm('Supprimer ce temps ?')) return
+                              const t = getToken()
+                              if (!t) return
+                              try {
+                                await adminDeleteCircuitTime(t, row.id)
+                                await runUserTimeSearch()
+                                if (circuitPick === row.circuit_id) {
+                                  const r = await adminListCircuitTimes(t, circuitPick, 0, 500)
+                                  setCircuitTimes(r.times ?? [])
+                                  setCircuitTimesTotal(r.total)
+                                }
+                              } catch (e) {
+                                setErr(e instanceof Error ? e.message : 'Erreur')
+                              }
+                            }}
+                          >
+                            Supprimer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
+
+      {inspectUser ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-labelledby="admin-inspect-title"
+        >
+          <div className="panel flex max-h-[90vh] w-full max-w-3xl flex-col p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/[0.08] pb-4">
+              <div>
+                <h3 id="admin-inspect-title" className="font-display text-lg font-semibold text-white">
+                  {inspectUser.email}
+                </h3>
+                <p className="mt-1 text-xs text-white/45">
+                  Courses GPS enregistrées dans l’app (live) —{' '}
+                  {inspectGoalsCount != null && inspectRunsTotal != null ? (
+                    <>
+                      {inspectRunsTotal} course{inspectRunsTotal !== 1 ? 's' : ''} au total · {inspectGoalsCount} objectif
+                      {inspectGoalsCount !== 1 ? 's' : ''}
+                    </>
+                  ) : (
+                    'chargement…'
+                  )}
+                </p>
+              </div>
+              <button type="button" className="btn-quiet shrink-0 text-sm" onClick={closeInspectUser}>
+                Fermer
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto pt-4">
+              {inspectLoading ? (
+                <div className="flex justify-center py-16">
+                  <div className="h-10 w-10 animate-spin rounded-2xl border-2 border-brand-orange/30 border-t-brand-orange" />
+                </div>
+              ) : inspectRuns && inspectRuns.length === 0 ? (
+                <p className="text-sm text-white/50">Aucune course enregistrée pour cet utilisateur.</p>
+              ) : inspectRuns && inspectRuns.length > 0 ? (
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-white/[0.06] text-[11px] uppercase tracking-wider text-white/40">
+                      <th className="py-2 pr-4">Date</th>
+                      <th className="py-2 pr-4">Distance</th>
+                      <th className="py-2 pr-4">En mouvement</th>
+                      <th className="py-2 pr-4">Total</th>
+                      <th className="py-2 pr-4">Allure moy.</th>
+                      <th className="py-2 pr-4">Objectif</th>
+                      <th className="py-2">Splits</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inspectRuns.map((r) => (
+                      <tr key={r.id} className="border-b border-white/[0.04] text-white/80">
+                        <td className="py-2.5 pr-4 text-xs text-white/65">{formatRunWhen(r.created_at)}</td>
+                        <td className="py-2.5 pr-4">{(r.distance_m / 1000).toFixed(2)} km</td>
+                        <td className="py-2.5 pr-4">{formatRunClock(r.moving_sec)}</td>
+                        <td className="py-2.5 pr-4 text-white/65" title="Depuis le 1er fix GPS jusqu’à la fin (horloge)">
+                          {formatRunClock(r.wall_sec)}
+                        </td>
+                        <td className="py-2.5 pr-4">{formatRunPace(r.avg_pace_sec_per_km)}</td>
+                        <td className="py-2.5 pr-4 text-white/60">
+                          {r.target_km > 0 ? `${r.target_km} km` : '—'}
+                        </td>
+                        <td className="py-2.5 text-white/60">{r.split_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+              {inspectRuns && inspectRuns.length > 0 ? (
+                <p className="mt-3 text-[11px] text-white/40">
+                  L’allure moyenne = temps <strong className="font-medium text-white/55">en mouvement</strong> ÷ distance
+                  GPS. Très courtes sorties : forte sensibilité aux erreurs du téléphone ; ce n’est pas un podomètre
+                  certifié.
+                </p>
+              ) : null}
+              {inspectRuns && inspectRunsTotal != null && inspectRuns.length < inspectRunsTotal ? (
+                <p className="mt-3 text-xs text-white/40">
+                  Affichage des {inspectRuns.length} dernières courses sur {inspectRunsTotal} (limite API).
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {editUser ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog">

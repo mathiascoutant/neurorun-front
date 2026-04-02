@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { MeCapabilities } from '@/lib/api'
 
-export type MemberNavActive = 'dashboard' | 'coach' | 'goals' | 'prevision' | 'run' | 'profile'
+export type MemberNavActive = 'dashboard' | 'coach' | 'goals' | 'prevision' | 'run' | 'circuit' | 'profile'
 
 type Props = {
   active: MemberNavActive
@@ -47,6 +47,8 @@ const ICONS = {
   prevision:
     'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z',
   run: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 15H3.75V13.5z',
+  circuit:
+    'M12 3.75c-3.75 0-6.75 2.25-6.75 5.25 0 3 3 5.25 6.75 8.25 3.75-3 6.75-5.25 6.75-8.25 0-3-3-5.25-6.75-5.25zm0 7.5a2.25 2.25 0 110-4.5 2.25 2.25 0 010 4.5z',
   goals:
     'M12 21a9 9 0 100-18 9 9 0 000 18zm0-3a6 6 0 100-12 6 6 0 000 12zm0-3a3 3 0 100-6 3 3 0 000 6z',
   admin:
@@ -59,6 +61,7 @@ export function MemberPrimaryNav({ active, onNavigate, capabilities, isAdmin, pr
   const showCoach = !isOff(capabilities, 'coach_chat')
   const showForecast = !isOff(capabilities, 'forecast')
   const showRun = !isOff(capabilities, 'live_runs')
+  const showCircuit = !isOff(capabilities, 'circuit_tracks')
   const showGoals = !isOff(capabilities, 'goals')
   const displayName = profileFirstName?.trim() || 'Profil'
 
@@ -116,6 +119,21 @@ export function MemberPrimaryNav({ active, onNavigate, capabilities, isAdmin, pr
             <span className={itemLabel}>
               <span className={titleClass}>Course</span>
               <span className={subtitleClass}>GPS · temps · allure · voix</span>
+            </span>
+          </Link>
+        ) : null}
+        {showCircuit ? (
+          <Link
+            href="/circuit/"
+            onClick={onNavigate}
+            className={`${itemBase} ${active === 'circuit' ? itemOn : itemOff}`}
+          >
+            <span className={`${iconWrapBase} ${active === 'circuit' ? iconWrapOn : ''}`}>
+              <NavIcon d={ICONS.circuit} />
+            </span>
+            <span className={itemLabel}>
+              <span className={titleClass}>Parcours</span>
+              <span className={subtitleClass}>Carte · classements</span>
             </span>
           </Link>
         ) : null}

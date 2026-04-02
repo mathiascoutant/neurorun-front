@@ -52,6 +52,8 @@ export type MeCapabilities = {
   live_runs?: boolean;
   forecast?: boolean;
   circuit?: boolean;
+  /** Parcours GPS + classements (souvent offre Performance) */
+  circuit_tracks?: boolean;
 };
 
 export type MeUser = {
@@ -89,6 +91,7 @@ export type OfferConfigPayload = {
       live_runs: boolean;
       forecast: boolean;
       circuit: boolean;
+      circuit_tracks: boolean;
     }
   >;
   prices_eur: Record<string, number>;
@@ -250,7 +253,7 @@ export async function adminGetUser(token: string, id: string): Promise<{
   goals_count: number;
   runs_count: number;
   goals: unknown[];
-  live_runs: unknown[];
+  live_runs: LiveRunListItem[];
 }> {
   return api(`/api/admin/users/${encodeURIComponent(id)}`, { token });
 }
@@ -344,6 +347,144 @@ export async function adminPutOfferConfig(
     method: "PUT",
     token,
     body: JSON.stringify(cfg),
+  });
+}
+
+export type CircuitLatLng = { lat: number; lng: number };
+
+export type CircuitSummary = {
+  id: string;
+  name: string;
+  start_index: number;
+  points: CircuitLatLng[];
+  center: { type: string; coordinates: number[] };
+  created_at: string;
+};
+
+export type CircuitTopRow = {
+  id: string;
+  user_id: string;
+  duration_ms: number;
+  created_at: string;
+  first_name?: string;
+  last_name?: string;
+  display_name?: string;
+};
+
+export type CircuitDetailResponse = {
+  circuit: CircuitSummary;
+  top_times: CircuitTopRow[];
+  participant_count: number;
+  completion_count_total: number;
+};
+
+export async function fetchCircuitsNear(
+  token: string,
+  lat: number,
+  lng: number,
+  radiusKm = 25,
+): Promise<{ circuits: CircuitSummary[] }> {
+  const q = new URLSearchParams({
+    lat: String(lat),
+    lng: String(lng),
+    radius_km: String(radiusKm),
+  });
+  return api<{ circuits: CircuitSummary[] }>(`/api/circuits/near?${q}`, { token });
+}
+
+export async function createCircuit(
+  token: string,
+  body: { name: string; points: CircuitLatLng[]; start_index: number },
+): Promise<CircuitSummary> {
+  return api<CircuitSummary>("/api/circuits", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchCircuitDetail(token: string, id: string): Promise<CircuitDetailResponse> {
+  return api<CircuitDetailResponse>(`/api/circuits/${encodeURIComponent(id)}`, { token });
+}
+
+export async function postCircuitTime(
+  token: string,
+  circuitId: string,
+  durationMs: number,
+): Promise<{ id: string; duration_ms: number; created_at: string }> {
+  return api(`/api/circuits/${encodeURIComponent(circuitId)}/times`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ duration_ms: durationMs }),
+  });
+}
+
+export async function adminListCircuits(
+  token: string,
+  q = "",
+  skip = 0,
+  limit = 50,
+): Promise<{ circuits: (CircuitSummary & { created_by?: string })[]; total: number }> {
+  const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+  if (q.trim()) params.set("q", q.trim());
+  return api(`/api/admin/circuits?${params}`, { token });
+}
+
+export async function adminPatchCircuit(
+  token: string,
+  id: string,
+  body: { name: string },
+): Promise<CircuitSummary> {
+  return api<CircuitSummary>(`/api/admin/circuits/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function adminDeleteCircuit(token: string, id: string): Promise<void> {
+  await api(`/api/admin/circuits/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export type AdminCircuitTimeRow = CircuitTopRow & {
+  circuit_id?: string;
+  circuit_name?: string;
+  email?: string;
+};
+
+export async function adminListCircuitTimes(
+  token: string,
+  circuitId: string,
+  skip = 0,
+  limit = 100,
+): Promise<{ times: AdminCircuitTimeRow[]; total: number }> {
+  const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+  return api(`/api/admin/circuits/${encodeURIComponent(circuitId)}/times?${params}`, { token });
+}
+
+export async function adminSearchCircuitTimesByUser(
+  token: string,
+  firstName: string,
+  lastName: string,
+  skip = 0,
+  limit = 50,
+): Promise<{ times: AdminCircuitTimeRow[]; total: number }> {
+  const params = new URLSearchParams({
+    skip: String(skip),
+    limit: String(limit),
+    first_name: firstName.trim(),
+    last_name: lastName.trim(),
+  });
+  return api(`/api/admin/circuit-times/search?${params}`, { token });
+}
+
+export async function adminDeleteCircuitTime(token: string, timeId: string): Promise<void> {
+  await api(`/api/admin/circuit-times/${encodeURIComponent(timeId)}`, {
+    method: "DELETE",
+    token,
   });
 }
 
