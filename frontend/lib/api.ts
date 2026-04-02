@@ -186,6 +186,8 @@ export type AdminUserRow = {
   plan: string;
   strava_linked: boolean;
   created_at: string;
+  /** Dernière activité API (connexion ou usage du site avec token), RFC3339 */
+  last_seen_at?: string;
 };
 
 export async function adminListUsers(

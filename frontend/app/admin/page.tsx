@@ -322,7 +322,7 @@ export default function AdminPage() {
 
         {tab === 'users' ? (
           <div className="panel overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
+            <table className="w-full min-w-[880px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06] text-[11px] uppercase tracking-wider text-white/40">
                   <th className="px-4 py-3">Email</th>
@@ -330,6 +330,7 @@ export default function AdminPage() {
                   <th className="px-4 py-3">Offre</th>
                   <th className="px-4 py-3">Strava</th>
                   <th className="px-4 py-3">Créé</th>
+                  <th className="px-4 py-3">Dernière connexion</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -342,6 +343,14 @@ export default function AdminPage() {
                     <td className="px-4 py-2.5">{u.strava_linked ? 'oui' : 'non'}</td>
                     <td className="px-4 py-2.5 text-xs text-white/45">
                       {new Date(u.created_at).toLocaleDateString('fr-FR')}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-white/45">
+                      {u.last_seen_at
+                        ? new Date(u.last_seen_at).toLocaleString('fr-FR', {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          })
+                        : '—'}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <button type="button" className="text-xs text-brand-ice hover:underline" onClick={() => openEditUser(u)}>
