@@ -616,6 +616,9 @@ export default function HomePage() {
             <Link href="/login/" className="transition hover:text-white/75">
               Connexion
             </Link>
+            <Link href="/contact/" className="transition hover:text-white/75">
+              Contact
+            </Link>
             <a href="#offres" className="transition hover:text-white/75">
               Offres
             </a>
