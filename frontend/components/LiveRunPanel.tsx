@@ -8,6 +8,12 @@ import {
   postLiveRun,
 } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import {
+  WEB_GPS_SEED,
+  WEB_GPS_WATCH,
+  webGpsCreditDistanceM,
+  webGpsMovingSecondsDelta,
+} from "@/lib/webGpsRun";
 import pkg from "../package.json";
 
 function haversineM(
@@ -181,20 +187,6 @@ type RunPhase = "setup" | "running" | "ended";
 /** Pas d’affichage pour la distance (m) — 1 m pour réagir vite après le fix GPS. */
 const DISTANCE_UI_STEP_M = 1;
 
-const GEO_SEED: PositionOptions = {
-  enableHighAccuracy: true,
-  maximumAge: 0,
-  timeout: 30000,
-};
-
-const GEO_WATCH: PositionOptions = {
-  enableHighAccuracy: true,
-  maximumAge: 0,
-  timeout: 20000,
-};
-
-/** Vitesse impliquée absurde pour la course → segment ignoré (anti-saut GPS). */
-const MAX_IMPLIED_SPEED_KMH = 50;
 /** Pause auto : vitesse lissée sous ce seuil → compteur « temps en mouvement » figé. */
 const PAUSE_SPEED_KMH = 1;
 const RESUME_SPEED_KMH = 1.6;
@@ -505,9 +497,10 @@ export function LiveRunPanel({
         const lastT = lastTickMsRef.current;
         if (lastT > 0) {
           const dt = (now - lastT) / 1000;
-          if (dt > 0 && dt < 5 && !pausedRef.current) {
-            movingSecRef.current += dt;
-          }
+          movingSecRef.current += webGpsMovingSecondsDelta(
+            dt,
+            pausedRef.current,
+          );
         }
         lastTickMsRef.current = now;
         setElapsedSec(movingSecRef.current);
@@ -531,7 +524,7 @@ export function LiveRunPanel({
       () => {
         /* watch ou prochaine tentative fournira la position */
       },
-      GEO_SEED,
+      WEB_GPS_SEED,
     );
 
     watchRef.current = navigator.geolocation.watchPosition(
@@ -552,10 +545,7 @@ export function LiveRunPanel({
         const prevLon = lastLonRef.current;
         const prevTs = lastTsRef.current;
 
-        let d = haversineM(prevLat, prevLon, latitude, longitude);
-        if (d > 80) {
-          return;
-        }
+        const d = haversineM(prevLat, prevLon, latitude, longitude);
 
         const dtSec =
           prevTs != null ? Math.max(0, (tsMs - prevTs) / 1000) : 0;
@@ -576,11 +566,19 @@ export function LiveRunPanel({
           return;
         }
 
-        const impliedKmh = (d / 1000 / dtSec) * 3600;
-        if (impliedKmh > MAX_IMPLIED_SPEED_KMH) {
+        const credit = webGpsCreditDistanceM(d, dtSec);
+        if (credit === null) {
+          lastLatRef.current = latitude;
+          lastLonRef.current = longitude;
+          lastTsRef.current = tsMs;
           return;
         }
-        if (impliedKmh > maxImpliedKmhRef.current) {
+
+        const impliedKmh = (credit / 1000 / dtSec) * 3600;
+        if (
+          Number.isFinite(impliedKmh) &&
+          impliedKmh > maxImpliedKmhRef.current
+        ) {
           maxImpliedKmhRef.current = impliedKmh;
         }
 
@@ -595,7 +593,7 @@ export function LiveRunPanel({
         lastLonRef.current = longitude;
         lastTsRef.current = tsMs;
 
-        accMRef.current += d;
+        accMRef.current += credit;
         trackPointsRef.current.push(positionToTrackPoint(pos));
 
         const bucket = Math.floor(accMRef.current / DISTANCE_UI_STEP_M);
@@ -629,7 +627,7 @@ export function LiveRunPanel({
         setGeoOk(false);
         setError(err.message || "Impossible d’accéder au GPS.");
       },
-      GEO_WATCH,
+      WEB_GPS_WATCH,
     );
   }, [targetKm]);
 
@@ -640,9 +638,10 @@ export function LiveRunPanel({
     let wallFinal = 0;
     if (clock0 > 0 && lastTickMsRef.current > 0) {
       const dt = (now - lastTickMsRef.current) / 1000;
-      if (dt > 0 && dt < 5 && !pausedRef.current) {
-        movingSecRef.current += dt;
-      }
+      movingSecRef.current += webGpsMovingSecondsDelta(
+        dt,
+        pausedRef.current,
+      );
       setElapsedSec(movingSecRef.current);
       wallFinal = Math.max(0, (now - clock0) / 1000);
       setWallSec(wallFinal);
@@ -745,9 +744,9 @@ export function LiveRunPanel({
             intégrée au téléphone. Le suivi reste le même avec ou sans réseau.
           </p>
           <p className="mt-2 text-[11px] text-cyan-100/70">
-            Précision : pas de podomètre — distance = somme des segments GPS (haversine). En dessous de ~400–500 m ou au
-            pas très lent, l’allure affichée peut s’écarter d’une montre ou de Strava ; compare surtout sur des sorties
-            plus longues.
+            Précision : pas de podomètre — distance = somme des segments GPS (haversine), avec plafond sur les trous
+            d’échantillonnage Safari / iOS pour se rapprocher d’une app native. L’écran allumé et la page au premier plan
+            restent recommandés.
           </p>
         </div>
       ) : null}

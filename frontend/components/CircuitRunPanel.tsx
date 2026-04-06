@@ -4,6 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchWalkingRouteDisplay, type RoutedDisplay } from '@/lib/osrmRouting'
 import { postCircuitTime, type CircuitLatLng } from '@/lib/api'
 import { getToken } from '@/lib/auth'
+import {
+  WEB_GPS_SEED,
+  WEB_GPS_WATCH,
+  webGpsCreditDistanceM,
+  webGpsMovingSecondsDelta,
+} from '@/lib/webGpsRun'
 
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000
@@ -37,23 +43,10 @@ function formatPaceMinPerKm(secPerKm: number): string {
   return `${m}:${s.toString().padStart(2, '0')}/km`
 }
 
-const GEO_SEED: PositionOptions = {
-  enableHighAccuracy: true,
-  maximumAge: 0,
-  timeout: 30000,
-}
-
-const GEO_WATCH: PositionOptions = {
-  enableHighAccuracy: true,
-  maximumAge: 0,
-  timeout: 20000,
-}
-
 /** Rayon pour valider départ / chaque point / arrivée (GPS typ. ± quelques dizaines de m). */
 const CHECKPOINT_RADIUS_M = 42
 
 const DISTANCE_UI_STEP_M = 1
-const MAX_IMPLIED_SPEED_KMH = 50
 const PAUSE_SPEED_KMH = 1
 const RESUME_SPEED_KMH = 1.6
 const PAUSE_AFTER_SLOW_SEC = 5
@@ -294,9 +287,7 @@ export function CircuitRunPanel({
     const now = Date.now()
     if (clock0 > 0 && lastTickMsRef.current > 0) {
       const dt = (now - lastTickMsRef.current) / 1000
-      if (dt > 0 && dt < 5 && !pausedRef.current) {
-        movingSecRef.current += dt
-      }
+      movingSecRef.current += webGpsMovingSecondsDelta(dt, pausedRef.current)
       setElapsedSec(movingSecRef.current)
       setWallSec(Math.max(0, (now - clock0) / 1000))
     }
@@ -397,8 +388,7 @@ export function CircuitRunPanel({
         const prevLat = lastLatRef.current
         const prevLon = lastLonRef.current
         const prevTs = lastTsRef.current
-        let d = haversineM(prevLat, prevLon, latitude, longitude)
-        if (d > 80) return
+        const d = haversineM(prevLat, prevLon, latitude, longitude)
         const dtSec = prevTs != null ? Math.max(0, (tsMs - prevTs) / 1000) : 0
         if (d < 0.5) {
           lastTsRef.current = tsMs
@@ -410,14 +400,23 @@ export function CircuitRunPanel({
           lastTsRef.current = tsMs
           return
         }
-        const impliedKmh = (d / 1000 / dtSec) * 3600
-        if (impliedKmh > MAX_IMPLIED_SPEED_KMH) return
+        const credit = webGpsCreditDistanceM(d, dtSec)
+        if (credit === null) {
+          lastLatRef.current = latitude
+          lastLonRef.current = longitude
+          lastTsRef.current = tsMs
+          return
+        }
+        const impliedKmh = (credit / 1000 / dtSec) * 3600
+        if (Number.isFinite(impliedKmh) && impliedKmh > maxImpliedKmhRef.current) {
+          maxImpliedKmhRef.current = impliedKmh
+        }
         speedBufRef.current = pushSpeedSample(speedBufRef.current, impliedKmh, SPEED_SMOOTH_WINDOW)
         applyPauseFromSmoothed(mean(speedBufRef.current), tsMs)
         lastLatRef.current = latitude
         lastLonRef.current = longitude
         lastTsRef.current = tsMs
-        accMRef.current += d
+        accMRef.current += credit
         const bucket = Math.floor(accMRef.current / DISTANCE_UI_STEP_M)
         if (bucket > lastDistanceUiBucketRef.current) {
           lastDistanceUiBucketRef.current = bucket
@@ -425,13 +424,13 @@ export function CircuitRunPanel({
         }
       },
       () => setGeoOk(false),
-      GEO_WATCH,
+      WEB_GPS_WATCH,
     )
     geoWatchRef.current = id
     navigator.geolocation.getCurrentPosition(
       (pos) => setUserPos({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       () => {},
-      GEO_SEED,
+      WEB_GPS_SEED,
     )
     return () => {
       navigator.geolocation.clearWatch(id)
@@ -483,9 +482,7 @@ export function CircuitRunPanel({
         const lastT = lastTickMsRef.current
         if (lastT > 0) {
           const dt = (now - lastT) / 1000
-          if (dt > 0 && dt < 5 && !pausedRef.current) {
-            movingSecRef.current += dt
-          }
+          movingSecRef.current += webGpsMovingSecondsDelta(dt, pausedRef.current)
         }
         lastTickMsRef.current = now
         setElapsedSec(movingSecRef.current)
