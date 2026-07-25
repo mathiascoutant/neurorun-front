@@ -37,8 +37,25 @@ import { clearToken, getToken } from '@/lib/auth'
 
 type Tab = 'stats' | 'users' | 'promos' | 'offers' | 'circuits'
 
-const PLANS = ['standard', 'strava', 'performance'] as const
 const ROLES = ['user', 'admin'] as const
+
+function orderedTierIds(cfg: OfferConfigPayload): string[] {
+  return Object.keys(cfg.tiers ?? {}).sort()
+}
+
+/** Ordre des paliers : config offres si disponible, sinon agrégat stats admin. */
+function tierIdsForUi(offer: OfferConfigPayload | null, stats: AdminStats | null): string[] {
+  if (offer?.tiers && Object.keys(offer.tiers).length > 0) {
+    return orderedTierIds(offer)
+  }
+  if (stats?.tier_order?.length) {
+    return stats.tier_order
+  }
+  if (stats?.users_by_plan && Object.keys(stats.users_by_plan).length > 0) {
+    return Object.keys(stats.users_by_plan).sort()
+  }
+  return []
+}
 
 function formatRunClock(totalSec: number): string {
   if (!Number.isFinite(totalSec) || totalSec < 0) return '0:00'
@@ -84,6 +101,8 @@ export default function AdminPage() {
   const [usersTotal, setUsersTotal] = useState(0)
   const [promos, setPromos] = useState<PromoCodeRow[]>([])
   const [offerCfg, setOfferCfg] = useState<OfferConfigPayload | null>(null)
+  const [offersLoading, setOffersLoading] = useState(false)
+  const [offerSavedOk, setOfferSavedOk] = useState(false)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
   const [editUser, setEditUser] = useState<AdminUserRow | null>(null)
@@ -134,6 +153,24 @@ export default function AdminPage() {
     if (!me || me.role !== 'admin') return
     const t = getToken()
     if (!t) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const c = await adminGetOfferConfig(t)
+        if (!cancelled) setOfferCfg(c)
+      } catch {
+        /* l’onglet Offres relancera le chargement si besoin */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [me])
+
+  useEffect(() => {
+    if (!me || me.role !== 'admin') return
+    const t = getToken()
+    if (!t) return
     setErr('')
     ;(async () => {
       try {
@@ -148,8 +185,13 @@ export default function AdminPage() {
           const r = await adminListPromos(t)
           setPromos(r.promo_codes ?? [])
         } else if (tab === 'offers') {
-          const c = await adminGetOfferConfig(t)
-          setOfferCfg(c)
+          setOffersLoading(true)
+          try {
+            const c = await adminGetOfferConfig(t)
+            setOfferCfg(c)
+          } finally {
+            setOffersLoading(false)
+          }
         } else if (tab === 'circuits') {
           const r = await adminListCircuits(t, '', 0, 120)
           setCircuitList(r.circuits ?? [])
@@ -221,6 +263,8 @@ export default function AdminPage() {
     try {
       const out = await adminPutOfferConfig(t, offerCfg)
       setOfferCfg(out)
+      setOfferSavedOk(true)
+      window.setTimeout(() => setOfferSavedOk(false), 4500)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erreur')
     }
@@ -395,16 +439,35 @@ export default function AdminPage() {
                   {stats.mrr_estimated_eur != null ? stats.mrr_estimated_eur.toFixed(2) : '—'}
                 </p>
                 <p className="mt-1 text-[10px] text-white/35">
-                  Strava × {stats.subscribers_strava ?? stats.users_plan_strava} + Perf. ×{' '}
-                  {stats.subscribers_performance ?? stats.users_plan_performance}
+                  {(() => {
+                    const order = stats.tier_order ?? []
+                    const prices = stats.prices_eur ?? {}
+                    const paid = order.filter((tid) => (prices[tid] ?? 0) > 0)
+                    if (paid.length === 0) return '—'
+                    return paid.map((tid, i) => (
+                      <span key={tid}>
+                        {i > 0 ? ' + ' : ''}
+                        {(stats.tier_display_names?.[tid]?.trim() || tid)} ×{' '}
+                        {stats.users_by_plan?.[tid] ?? 0}
+                      </span>
+                    ))
+                  })()}
                 </p>
               </div>
               <div className="panel p-5">
                 <p className="text-[10px] uppercase tracking-wider text-white/40">Par offre</p>
                 <ul className="mt-3 space-y-1 text-sm text-white/70">
-                  <li>Standard : {stats.users_plan_standard}</li>
-                  <li>Strava : {stats.users_plan_strava}</li>
-                  <li>Performance : {stats.users_plan_performance}</li>
+                  {(stats.tier_order && stats.tier_order.length > 0
+                    ? stats.tier_order
+                    : stats.users_by_plan
+                      ? Object.keys(stats.users_by_plan).sort()
+                      : []
+                  ).map((tid) => (
+                    <li key={tid}>
+                      {(stats.tier_display_names?.[tid]?.trim() || tid)} :{' '}
+                      {stats.users_by_plan?.[tid] ?? '—'}
+                    </li>
+                  ))}
                 </ul>
               </div>
             </div>
@@ -476,7 +539,7 @@ export default function AdminPage() {
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">Rôle</th>
                   <th className="px-4 py-3">Offre</th>
-                  <th className="px-4 py-3">Strava</th>
+                  <th className="px-4 py-3">Strava lié</th>
                   <th className="px-4 py-3">Créé</th>
                   <th className="px-4 py-3">Dernière connexion</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -558,100 +621,157 @@ export default function AdminPage() {
           </div>
         ) : null}
 
-        {tab === 'offers' && offerCfg ? (
-          <form className="space-y-8" onSubmit={saveOffers}>
-            <p className="text-sm text-white/55">
-              Ajuste les <strong className="text-white/80">fonctionnalités</strong> par palier ci-dessous. Les{' '}
-              <strong className="text-white/80">prix</strong> ne concernent que les offres payantes (Strava et Performance) — le
-              plan Standard reste gratuit ; ils sont saisis une seule fois en bas de page.
-            </p>
-            {PLANS.map((tier) => (
-              <div key={tier} className="panel p-6">
-                <h2 className="font-display text-lg font-semibold capitalize text-white">{tier}</h2>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {(
-                    [
-                      ['coach_chat', 'Coach IA (chat)'],
-                      ['strava_dashboard', 'Strava / tableaux'],
-                      ['goals', 'Objectifs & plans'],
-                      ['live_runs', 'Course GPS (live)'],
-                      ['forecast', 'Prévision course'],
-                      ['circuit', 'Calendrier (objectif)'],
-                      ['circuit_tracks', 'Parcours GPS + classements'],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <label key={key} className="flex cursor-pointer items-center gap-3 text-sm text-white/80">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-white/20 bg-surface-2"
-                        checked={offerCfg.tiers[tier]?.[key] ?? false}
-                        onChange={(e) => toggleTier(tier, key, e.target.checked)}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            <div className="panel p-6">
-              <h2 className="font-display text-lg font-semibold text-white">Tarification mensuelle (€)</h2>
-              <p className="mt-1 text-xs text-white/45">
-                S’applique aux abonnements <span className="text-white/70">strava</span> et{' '}
-                <span className="text-white/70">performance</span>. Le plan standard est à 0 €.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-6">
-                <div>
-                  <label className="text-xs text-white/45">Offre Strava (€ / mois)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="field mt-1 max-w-[160px]"
-                    value={offerCfg.prices_eur?.strava ?? ''}
-                    onChange={(e) =>
-                      setOfferCfg((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              prices_eur: {
-                                ...prev.prices_eur,
-                                strava: parseFloat(e.target.value) || 0,
-                              },
-                            }
-                          : prev,
-                      )
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-white/45">Offre Performance (€ / mois)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="field mt-1 max-w-[160px]"
-                    value={offerCfg.prices_eur?.performance ?? ''}
-                    onChange={(e) =>
-                      setOfferCfg((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              prices_eur: {
-                                ...prev.prices_eur,
-                                performance: parseFloat(e.target.value) || 0,
-                              },
-                            }
-                          : prev,
-                      )
-                    }
-                  />
-                </div>
-              </div>
+        {tab === 'offers' ? (
+          offersLoading && !offerCfg ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-24 text-sm text-white/50">
+              <div className="h-10 w-10 animate-spin rounded-2xl border-2 border-brand-orange/30 border-t-brand-orange" />
+              Chargement des offres…
             </div>
+          ) : !offerCfg ? (
+            <div className="panel p-6 text-sm text-white/60">
+              Impossible de charger la configuration des offres. Vérifie la connexion et tes droits administrateur, puis
+              rouvre cet onglet.
+            </div>
+          ) : (
+            <form className="space-y-8" onSubmit={saveOffers}>
+              <div className="space-y-2">
+                <h1 className="font-display text-xl font-semibold text-white">Offres & paliers</h1>
+                <p className="text-sm text-white/55">
+                  Pour chaque palier : le <strong className="text-white/80">nom affiché</strong> (app & site), le{' '}
+                  <strong className="text-white/80">prix mensuel</strong> si l’offre est payante, et les{' '}
+                  <strong className="text-white/80">fonctionnalités</strong> incluses. L’identifiant entre parenthèses est
+                  celui en base (abonnements, API) — il ne change pas depuis cet écran.
+                </p>
+              </div>
 
-            <button type="submit" className="btn-brand">
-              Enregistrer la configuration
-            </button>
-          </form>
+              {offerSavedOk ? (
+                <div className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+                  Configuration enregistrée. Les utilisateurs verront les changements selon le cache API (court délai
+                  possible).
+                </div>
+              ) : null}
+
+              {orderedTierIds(offerCfg).map((tier) => (
+                <div key={tier} className="panel p-6">
+                  <h2 className="font-display text-lg font-semibold text-white">
+                    {offerCfg.tier_display_names?.[tier]?.trim() || tier}
+                    <span className="ml-2 font-mono text-xs font-normal text-white/40">({tier})</span>
+                  </h2>
+
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="text-xs text-white/45">Nom affiché (marketing)</label>
+                      <input
+                        type="text"
+                        className="field mt-1 w-full max-w-xl"
+                        placeholder={`ex. ${tier}`}
+                        value={offerCfg.tier_display_names?.[tier] ?? ''}
+                        onChange={(e) =>
+                          setOfferCfg((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  tier_display_names: {
+                                    ...prev.tier_display_names,
+                                    [tier]: e.target.value,
+                                  },
+                                }
+                              : prev,
+                          )
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-white/45">Prix mensuel (€)</label>
+                      {tier === 'standard' ? (
+                        <p className="mt-2 text-sm text-white/55">Palier gratuit — 0 € (non modifiable ici).</p>
+                      ) : (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          className="field mt-1 max-w-[200px]"
+                          value={offerCfg.prices_eur?.[tier] ?? ''}
+                          onChange={(e) =>
+                            setOfferCfg((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    prices_eur: {
+                                      ...prev.prices_eur,
+                                      [tier]: parseFloat(e.target.value) || 0,
+                                    },
+                                  }
+                                : prev,
+                            )
+                          }
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <h3 className="mt-6 text-xs font-medium uppercase tracking-wider text-white/40">Contenu de l’offre</h3>
+                  <p className="mt-1 text-[11px] text-white/35">
+                    Coche les fonctionnalités actives pour ce palier (checkout, app mobile, site).
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {(
+                      [
+                        ['coach_chat', 'Coach IA (chat)'],
+                        ['strava_dashboard', 'Tableaux & sync Strava'],
+                        ['goals', 'Objectifs & plans'],
+                        ['live_runs', 'Course GPS (live)'],
+                        ['forecast', 'Prévision course'],
+                        ['circuit', 'Calendrier (objectif)'],
+                        ['circuit_tracks', 'Parcours GPS + classements'],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <label key={key} className="flex cursor-pointer items-center gap-3 text-sm text-white/80">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-white/20 bg-surface-2"
+                          checked={offerCfg.tiers[tier]?.[key] ?? false}
+                          onChange={(e) => toggleTier(tier, key, e.target.checked)}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex flex-wrap items-center gap-4">
+                <button type="submit" className="btn-brand" disabled={offersLoading}>
+                  {offersLoading ? '…' : 'Enregistrer toute la configuration'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-quiet px-4 py-2 text-xs"
+                  disabled={offersLoading}
+                  onClick={() => {
+                    const t = getToken()
+                    if (!t) return
+                    setErr('')
+                    setOffersLoading(true)
+                    void (async () => {
+                      try {
+                        const c = await adminGetOfferConfig(t)
+                        setOfferCfg(c)
+                        setOfferSavedOk(false)
+                      } catch (e) {
+                        setErr(e instanceof Error ? e.message : 'Erreur')
+                      } finally {
+                        setOffersLoading(false)
+                      }
+                    })()
+                  }}
+                >
+                  Recharger depuis le serveur
+                </button>
+              </div>
+            </form>
+          )
         ) : null}
 
         {tab === 'circuits' ? (
@@ -965,11 +1085,21 @@ export default function AdminPage() {
               <div>
                 <label className="text-xs text-white/45">Offre</label>
                 <select className="field mt-1 w-full" value={editPlan} onChange={(e) => setEditPlan(e.target.value)}>
-                  {PLANS.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
+                  {(() => {
+                    const ids = tierIdsForUi(offerCfg, stats)
+                    const list = ids.length > 0 ? ids : [editUser.plan].filter(Boolean)
+                    return list.map((p) => {
+                      const label =
+                        offerCfg?.tier_display_names?.[p]?.trim() ||
+                        stats?.tier_display_names?.[p]?.trim() ||
+                        p
+                      return (
+                        <option key={p} value={p}>
+                          {label === p ? p : `${label} (${p})`}
+                        </option>
+                      )
+                    })
+                  })()}
                 </select>
               </div>
               <div className="flex gap-3 pt-2">

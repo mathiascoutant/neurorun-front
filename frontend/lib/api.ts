@@ -95,6 +95,8 @@ export type OfferConfigPayload = {
     }
   >;
   prices_eur: Record<string, number>;
+  /** Libellés affichés (admin → Offres), clés = ids paliers côté API. */
+  tier_display_names?: Record<string, string>;
 };
 
 export async function api<T>(
@@ -212,10 +214,16 @@ export type AdminStats = {
   users_plan_standard: number;
   users_plan_strava: number;
   users_plan_performance: number;
+  /** Ids paliers (config offres), ordre d’affichage stable */
+  tier_order?: string[];
+  /** Effectifs par id de palier (aligné sur la config offres) */
+  users_by_plan?: Record<string, number>;
+  /** Libellés marketing par id (même clés que la config offres) */
+  tier_display_names?: Record<string, string>;
   /** Inscriptions par jour (UTC), typiquement 30 jours */
   signups_by_day?: SignupDayRow[];
   top_active_users?: TopActiveUserRow[];
-  /** Revenu récurrent mensuel estimé (strava × prix + performance × prix) */
+  /** Revenu récurrent mensuel estimé (Σ prix × abonnés par palier payant) */
   mrr_estimated_eur?: number;
   prices_eur?: Record<string, number>;
   subscribers_strava?: number;
