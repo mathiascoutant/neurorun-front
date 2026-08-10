@@ -1,37 +1,106 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mark } from '@/components/Mark'
 import { RevealOnScroll } from '@/components/RevealOnScroll'
-import { ApiError, fetchMe, fetchPublicOfferConfig } from '@/lib/api'
+import { ApiError, fetchMe, fetchPublicOfferConfig, type OfferConfigPayload } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
+import {
+  DEFAULT_OFFER_CONFIG,
+  TIER_FEATURE_ROWS,
+  mergePublicOfferConfig,
+  orderedTierIds,
+  tierLabelFromConfig,
+  tierPriceEUR,
+} from '@/lib/offerConfig'
 
-const DEFAULT_STRAVA_EUR = 3.99
-const DEFAULT_PERF_EUR = 7.99
+type OfferId = string
 
-type OfferId = 'standard' | 'strava' | 'performance'
-
-const OFFER_ACTIVE_SHADOW: Record<OfferId, string> = {
-  standard:
-    'z-[1] shadow-[0_0_0_2px_rgba(255,255,255,0.22),0_0_28px_rgba(255,255,255,0.12),0_0_52px_rgba(103,232,249,0.1)]',
-  strava:
-    'z-[1] shadow-[0_0_0_2px_rgba(252,76,2,0.55),0_0_32px_rgba(252,76,2,0.32),0_0_56px_rgba(252,76,2,0.15)]',
-  performance:
-    'z-[1] shadow-[0_0_0_2px_rgba(103,232,249,0.45),0_0_32px_rgba(103,232,249,0.22),0_0_52px_rgba(103,232,249,0.12)]',
+/**
+ * Habillage par palier : couleurs, halo et destination du bouton. Purement visuel — le contenu
+ * (nom affiché, prix, fonctionnalités) vient de `/api/public/offer-config`, comme dans l’app.
+ */
+type OfferTheme = {
+  activeShadow: string
+  hoverShadow: string
+  panelClass: string
+  kickerClass: string
+  ctaClass: string
+  ctaLabel: (label: string) => string
+  href: (id: string) => string
+  featured?: boolean
 }
 
-const OFFER_HOVER_SHADOW: Record<OfferId, string> = {
-  standard:
+const NEUTRAL_THEME: OfferTheme = {
+  activeShadow:
+    'z-[1] shadow-[0_0_0_2px_rgba(255,255,255,0.22),0_0_28px_rgba(255,255,255,0.12),0_0_52px_rgba(103,232,249,0.1)]',
+  hoverShadow:
     'lg:hover:z-[1] lg:hover:shadow-[0_0_0_2px_rgba(255,255,255,0.18),0_0_28px_rgba(255,255,255,0.1)]',
-  strava:
-    'lg:hover:z-[1] lg:hover:shadow-[0_0_0_2px_rgba(252,76,2,0.45),0_0_36px_rgba(252,76,2,0.22)]',
-  performance:
-    'lg:hover:z-[1] lg:hover:shadow-[0_0_0_2px_rgba(103,232,249,0.35),0_0_32px_rgba(103,232,249,0.18)]',
+  panelClass: '',
+  kickerClass: 'text-white/50',
+  ctaClass: 'btn-quiet',
+  ctaLabel: (label) => `Choisir ${label}`,
+  href: (id) => `/register/?next=/checkout/${id}/`,
+}
+
+const OFFER_THEMES: Record<string, OfferTheme> = {
+  standard: {
+    ...NEUTRAL_THEME,
+    ctaLabel: () => 'Compte gratuit',
+    href: () => '/register/',
+  },
+  strava: {
+    activeShadow:
+      'z-[1] shadow-[0_0_0_2px_rgba(252,76,2,0.55),0_0_32px_rgba(252,76,2,0.32),0_0_56px_rgba(252,76,2,0.15)]',
+    hoverShadow:
+      'lg:hover:z-[1] lg:hover:shadow-[0_0_0_2px_rgba(252,76,2,0.45),0_0_36px_rgba(252,76,2,0.22)]',
+    panelClass: 'overflow-hidden',
+    kickerClass: 'text-brand-orange',
+    ctaClass: 'btn-brand',
+    ctaLabel: (label) => `Choisir ${label}`,
+    href: (id) => `/register/?next=/checkout/${id}/`,
+    featured: true,
+  },
+  performance: {
+    activeShadow:
+      'z-[1] shadow-[0_0_0_2px_rgba(103,232,249,0.45),0_0_32px_rgba(103,232,249,0.22),0_0_52px_rgba(103,232,249,0.12)]',
+    hoverShadow:
+      'lg:hover:z-[1] lg:hover:shadow-[0_0_0_2px_rgba(103,232,249,0.35),0_0_32px_rgba(103,232,249,0.18)]',
+    panelClass: 'border-brand-ice/20 bg-surface-2/40',
+    kickerClass: 'text-brand-ice/90',
+    ctaClass: 'btn-quiet border-brand-ice/25 bg-brand-ice/5 hover:bg-brand-ice/10',
+    ctaLabel: (label) => label,
+    href: (id) => `/register/?next=/checkout/${id}/`,
+  },
+}
+
+function themeFor(id: string): OfferTheme {
+  return OFFER_THEMES[id] ?? NEUTRAL_THEME
+}
+
+/** Classes littérales : Tailwind ne peut pas générer `lg:grid-cols-${n}` à la volée. */
+const OFFERS_GRID_COLS: Record<number, string> = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+}
+
+/** Accroche éditoriale par palier (hors config serveur, qui ne porte que noms / prix / options). */
+const OFFER_TAGLINE: Record<string, string> = {
+  standard: 'Coach IA standard : conseils et dialogue sans Strava.',
+  strava: 'Sync Strava : analyses basées sur tes sorties réelles.',
+  performance: 'Complet : IA avancée, Strava et plans sur circuit.',
+}
+
+function capitalize(s: string): string {
+  return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1)
 }
 
 function formatMonthlyEUR(n: number): string {
+  if (n <= 0) return '0 €'
   return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
 }
 
@@ -49,23 +118,24 @@ function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 export default function HomePage() {
   const router = useRouter()
-  const [priceStravaEur, setPriceStravaEur] = useState(DEFAULT_STRAVA_EUR)
-  const [pricePerfEur, setPricePerfEur] = useState(DEFAULT_PERF_EUR)
+  const [offerCfg, setOfferCfg] = useState<OfferConfigPayload>(DEFAULT_OFFER_CONFIG)
   const offersScrollRef = useRef<HTMLDivElement | null>(null)
-  const standardOfferRef = useRef<HTMLDivElement | null>(null)
-  const stravaOfferRef = useRef<HTMLDivElement | null>(null)
-  const performanceOfferRef = useRef<HTMLDivElement | null>(null)
+  const offerRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [carouselActive, setCarouselActive] = useState<OfferId | null>(null)
+
+  const tierIds = useMemo(() => orderedTierIds(offerCfg), [offerCfg])
+  /** Palier mis en avant : celui marqué « Populaire », sinon le premier. */
+  const featuredTierId = useMemo(
+    () => tierIds.find((id) => themeFor(id).featured) ?? tierIds[0] ?? 'standard',
+    [tierIds],
+  )
 
   useEffect(() => {
     let off = false
     ;(async () => {
       try {
         const cfg = await fetchPublicOfferConfig()
-        if (off) return
-        const p = cfg.prices_eur ?? {}
-        if (typeof p.strava === 'number' && !Number.isNaN(p.strava)) setPriceStravaEur(p.strava)
-        if (typeof p.performance === 'number' && !Number.isNaN(p.performance)) setPricePerfEur(p.performance)
+        if (!off) setOfferCfg(mergePublicOfferConfig(cfg))
       } catch {
         /* garde les défauts si l’API est injoignable */
       }
@@ -97,7 +167,7 @@ export default function HomePage() {
     }
   }, [router])
 
-  /* Carrousel : centrage Strava + halo sur la carte au centre (mobile) */
+  /* Carrousel : centrage de l’offre mise en avant + halo sur la carte au centre (mobile) */
   useEffect(() => {
     const scroller = offersScrollRef.current
     if (!scroller) return
@@ -110,14 +180,9 @@ export default function HomePage() {
         return
       }
       const centerX = scroller.getBoundingClientRect().left + scroller.clientWidth / 2
-      const items: { id: OfferId; el: HTMLElement | null }[] = [
-        { id: 'standard', el: standardOfferRef.current },
-        { id: 'strava', el: stravaOfferRef.current },
-        { id: 'performance', el: performanceOfferRef.current },
-      ]
-      let best: OfferId = 'strava'
+      let best: OfferId = featuredTierId
       let bestD = Infinity
-      for (const { id, el } of items) {
+      for (const [id, el] of Object.entries(offerRefs.current)) {
         if (!el) continue
         const r = el.getBoundingClientRect()
         const mid = r.left + r.width / 2
@@ -130,8 +195,8 @@ export default function HomePage() {
       setCarouselActive(best)
     }
 
-    const centerStrava = () => {
-      const mid = stravaOfferRef.current
+    const centerFeatured = () => {
+      const mid = offerRefs.current[featuredTierId]
       if (!scroller || !mid || isDesktop()) return
       const sc = scroller.getBoundingClientRect()
       const m = mid.getBoundingClientRect()
@@ -149,7 +214,7 @@ export default function HomePage() {
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        centerStrava()
+        centerFeatured()
         requestAnimationFrame(syncActive)
       })
     })
@@ -165,7 +230,8 @@ export default function HomePage() {
       scroller.removeEventListener('scroll', onScroll)
       cancelAnimationFrame(scrollRaf)
     }
-  }, [])
+    // Les cartes sont rendues à partir de la config serveur : on recale le carrousel à l’arrivée.
+  }, [featuredTierId, tierIds])
 
   return (
     <div className="relative min-h-screen">
@@ -262,149 +328,90 @@ export default function HomePage() {
             '-mx-4 mt-12 flex snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-visible pb-1 pt-0.5 scroll-mt-24 ' +
             'max-lg:scroll-px-[max(1rem,calc(50%-min(34vw,8.5rem)))] max-lg:px-[max(1rem,calc(50%-min(34vw,8.5rem)))] ' +
             '[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ' +
-            'lg:mx-0 lg:mt-16 lg:grid lg:grid-cols-3 lg:scroll-p-0 lg:gap-5 lg:snap-none lg:overflow-visible lg:px-0 lg:pb-0 lg:pt-0 lg:items-stretch'
+            'lg:mx-0 lg:mt-16 lg:grid lg:scroll-p-0 lg:gap-5 lg:snap-none lg:overflow-visible lg:px-0 lg:pb-0 lg:pt-0 lg:items-stretch ' +
+            (OFFERS_GRID_COLS[tierIds.length] ?? 'lg:grid-cols-3')
           }
         >
-          {/* Offre 1 — Standard gratuit */}
-          <RevealOnScroll
-            ref={standardOfferRef}
-            className="h-full w-[min(68vw,17rem)] shrink-0 snap-center"
-            delayMs={0}
-          >
-            <section
-              className={
-                'panel relative flex h-full flex-col rounded-3xl p-5 transition-shadow duration-300 ease-out ' +
-                'lg:min-h-0 lg:w-full lg:p-8 ' +
-                OFFER_HOVER_SHADOW.standard +
-                (carouselActive === 'standard' ? ` ${OFFER_ACTIVE_SHADOW.standard}` : '')
-              }
-            >
-            <p className="kicker text-white/50">Standard</p>
-            <h2 className="mt-1.5 font-display text-lg font-semibold text-white lg:mt-2 lg:text-xl">IA classique</h2>
-            <p className="mt-1 text-2xl font-semibold tracking-tight text-white lg:text-3xl">
-              0 €<span className="text-sm font-normal text-white/40 lg:text-base"> / mois</span>
-            </p>
-            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-white/45 lg:mt-3 lg:line-clamp-none lg:text-sm">
-              Coach IA standard : conseils et dialogue sans Strava.
-            </p>
-            <ul className="mt-4 flex flex-1 flex-col gap-2 text-xs text-white/75 lg:mt-6 lg:gap-3 lg:text-sm">
-              <li className="flex items-start gap-2">
-                <CheckIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                Chat coach IA classique
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                Compte gratuit
-              </li>
-              <li className="flex items-start gap-2 text-white/40">
-                <span className="mt-0.5 inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-white/20 lg:mt-1 lg:h-4 lg:w-4" />
-                Pas de Strava
-              </li>
-            </ul>
-            <Link href="/register/" className="btn-quiet mt-5 w-full justify-center text-xs sm:text-sm lg:mt-auto">
-              Compte gratuit
-            </Link>
-          </section>
-          </RevealOnScroll>
-
-          {/* Offre 2 — Strava */}
-          <RevealOnScroll
-            ref={stravaOfferRef}
-            className="h-full w-[min(68vw,17rem)] shrink-0 snap-center"
-            delayMs={70}
-          >
-            <section
-              className={
-                'panel relative flex h-full flex-col overflow-hidden rounded-3xl p-5 transition-shadow duration-300 ease-out ' +
-                (carouselActive === 'strava'
-                  ? OFFER_ACTIVE_SHADOW.strava
-                  : 'shadow-[0_0_40px_rgba(252,76,2,0.1)]') +
-                ' lg:w-full lg:p-8 ' +
-                OFFER_HOVER_SHADOW.strava
-              }
-            >
-            <div className="absolute right-3 top-3 rounded-full bg-brand-orange/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-orange lg:right-4 lg:top-4 lg:px-2.5 lg:text-[10px]">
-              Populaire
-            </div>
-            <p className="kicker text-brand-orange">Strava</p>
-            <h2 className="mt-1.5 pr-16 font-display text-lg font-semibold text-white lg:mt-2 lg:pr-0 lg:text-xl">
-              Strava connecté
-            </h2>
-            <p className="mt-1 text-2xl font-semibold tracking-tight text-white lg:text-3xl">
-              {formatMonthlyEUR(priceStravaEur)}
-              <span className="text-sm font-normal text-white/40 lg:text-base"> / mois</span>
-            </p>
-            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-white/45 lg:mt-3 lg:line-clamp-none lg:text-sm">
-              Sync Strava : analyses basées sur tes sorties réelles.
-            </p>
-            <ul className="mt-4 flex flex-1 flex-col gap-2 text-xs text-white/75 lg:mt-6 lg:gap-3 lg:text-sm">
-              <li className="flex items-start gap-2">
-                <CheckIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                Tout du Standard
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                Synchronisation Strava
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                Tendances & tableaux de bord
-              </li>
-            </ul>
-            <Link
-              href="/register/?next=/checkout/strava/"
-              className="btn-brand mt-5 w-full justify-center text-xs sm:text-sm lg:mt-auto"
-            >
-              Choisir Strava
-            </Link>
-          </section>
-          </RevealOnScroll>
-
-          {/* Offre 3 — Complet */}
-          <RevealOnScroll
-            ref={performanceOfferRef}
-            className="h-full w-[min(68vw,17rem)] shrink-0 snap-center"
-            delayMs={140}
-          >
-            <section
-              className={
-                'panel relative flex h-full flex-col rounded-3xl border-brand-ice/20 bg-surface-2/40 p-5 transition-shadow duration-300 ease-out ' +
-                'lg:w-full lg:p-8 ' +
-                OFFER_HOVER_SHADOW.performance +
-                (carouselActive === 'performance' ? ` ${OFFER_ACTIVE_SHADOW.performance}` : '')
-              }
-            >
-            <p className="kicker text-brand-ice/90">Performance</p>
-            <h2 className="mt-1.5 font-display text-lg font-semibold text-white lg:mt-2 lg:text-xl">IA + Strava + circuit</h2>
-            <p className="mt-1 text-2xl font-semibold tracking-tight text-white lg:text-3xl">
-              {formatMonthlyEUR(pricePerfEur)}
-              <span className="text-sm font-normal text-white/40 lg:text-base"> / mois</span>
-            </p>
-            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-white/45 lg:mt-3 lg:line-clamp-none lg:text-sm">
-              Complet : IA avancée, Strava et plans sur circuit.
-            </p>
-            <ul className="mt-4 flex flex-1 flex-col gap-2 text-xs text-white/75 lg:mt-6 lg:gap-3 lg:text-sm">
-              <li className="flex items-start gap-2">
-                <CheckIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                IA + contexte Strava
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                Prévisions & objectifs
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                Plans circuit
-              </li>
-            </ul>
-            <Link
-              href="/register/?next=/checkout/performance/"
-              className="btn-quiet mt-5 w-full justify-center border-brand-ice/25 bg-brand-ice/5 text-xs hover:bg-brand-ice/10 sm:text-sm lg:mt-auto"
-            >
-              Performance
-            </Link>
-          </section>
-          </RevealOnScroll>
+          {tierIds.map((id, i) => {
+            const theme = themeFor(id)
+            const label = tierLabelFromConfig(offerCfg, id)
+            const price = tierPriceEUR(offerCfg, id)
+            const flags = offerCfg.tiers[id]
+            const active = carouselActive === id
+            return (
+              <RevealOnScroll
+                key={id}
+                ref={(el) => {
+                  offerRefs.current[id] = el
+                }}
+                className="h-full w-[min(68vw,17rem)] shrink-0 snap-center"
+                delayMs={i * 70}
+              >
+                <section
+                  className={
+                    'panel relative flex h-full flex-col rounded-3xl p-5 transition-shadow duration-300 ease-out ' +
+                    'lg:min-h-0 lg:w-full lg:p-8 ' +
+                    theme.panelClass +
+                    ' ' +
+                    theme.hoverShadow +
+                    (active
+                      ? ` ${theme.activeShadow}`
+                      : theme.featured
+                        ? ' shadow-[0_0_40px_rgba(252,76,2,0.1)]'
+                        : '')
+                  }
+                >
+                  {theme.featured && (
+                    <div className="absolute right-3 top-3 rounded-full bg-brand-orange/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-orange lg:right-4 lg:top-4 lg:px-2.5 lg:text-[10px]">
+                      Populaire
+                    </div>
+                  )}
+                  <p className={`kicker ${theme.kickerClass}`}>{label}</p>
+                  <h2
+                    className={
+                      'mt-1.5 font-display text-lg font-semibold text-white lg:mt-2 lg:text-xl' +
+                      (theme.featured ? ' pr-16 lg:pr-0' : '')
+                    }
+                  >
+                    {capitalize(label)}
+                  </h2>
+                  <p className="mt-1 text-2xl font-semibold tracking-tight text-white lg:text-3xl">
+                    {formatMonthlyEUR(price)}
+                    <span className="text-sm font-normal text-white/40 lg:text-base"> / mois</span>
+                  </p>
+                  <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-white/45 lg:mt-3 lg:line-clamp-none lg:text-sm">
+                    {OFFER_TAGLINE[id] ?? `Offre ${label} : ${price > 0 ? 'accès complet aux options ci-dessous.' : 'accès gratuit aux options ci-dessous.'}`}
+                  </p>
+                  {/* mb sur la liste, pas mt sur le bouton : `mt-auto` retombe à 0 dès que la
+                      liste remplit la carte, et le bouton collait au dernier libellé. */}
+                  <ul className="mb-6 mt-4 flex flex-1 flex-col gap-2 text-xs text-white/75 lg:mb-7 lg:mt-6 lg:gap-3 lg:text-sm">
+                    {TIER_FEATURE_ROWS.map(([key, featureLabel]) => {
+                      const on = flags?.[key] ?? false
+                      return (
+                        <li
+                          key={key}
+                          className={`flex items-start gap-2${on ? '' : ' text-white/40'}`}
+                        >
+                          {on ? (
+                            <CheckIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
+                          ) : (
+                            <span className="mt-0.5 inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-white/20 lg:mt-1 lg:h-4 lg:w-4" />
+                          )}
+                          {featureLabel}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  <Link
+                    href={theme.href(id)}
+                    className={`${theme.ctaClass} w-full justify-center text-xs sm:text-sm lg:mt-auto`}
+                  >
+                    {capitalize(theme.ctaLabel(label))}
+                  </Link>
+                </section>
+              </RevealOnScroll>
+            )
+          })}
         </div>
 
         <section className="mt-20 sm:mt-28" aria-labelledby="how-heading">

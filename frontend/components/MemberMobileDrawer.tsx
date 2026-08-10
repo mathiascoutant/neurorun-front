@@ -63,7 +63,7 @@ export function MemberMobileDrawer({ open, onClose, headerLeading, children, id 
         aria-modal="true"
         aria-label="Menu de navigation"
         aria-hidden={!open}
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] max-h-[100dvh] w-[min(21.5rem,calc(100vw-1rem))] flex-col border-r border-white/[0.08] bg-surface-1/98 shadow-lift backdrop-blur-xl transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] md:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] max-h-[100dvh] w-[min(21.5rem,calc(100vw-1rem))] flex-col border-r border-white/[0.08] bg-[#0a0c12] shadow-lift transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] md:hidden ${
           open ? 'translate-x-0' : '-translate-x-full pointer-events-none'
         }`}
       >

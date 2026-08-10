@@ -11,6 +11,13 @@ import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 import { MemberPageHeader } from '@/components/MemberPageHeader'
 import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
 import {
+  CircuitListCard,
+  DetailInfoCard,
+  InfoRow,
+  LeaderboardCard,
+  fmtCircuitLength,
+} from '@/components/circuit/CircuitPieces'
+import {
   ApiError,
   createCircuit,
   fetchCircuitDetail,
@@ -34,6 +41,9 @@ function orderedPathPoints(pts: CircuitLatLng[], start: number): CircuitLatLng[]
   }
   return out
 }
+
+/** Rayons proposés, identiques à l’app mobile. */
+const RADIUS_KM_OPTIONS = [3, 5, 10, 25, 50] as const
 
 const EARTH_R_M = 6_371_000
 
@@ -368,7 +378,7 @@ function MapInner({
     if (m) m.setView([center.lat, center.lng], zoom)
   }, [center.lat, center.lng, zoom])
 
-  return <div ref={containerRef} className="h-[min(52vh,520px)] w-full rounded-xl border border-white/10 bg-black/20 md:h-[420px]" />
+  return <div ref={containerRef} className="relative isolate z-0 h-[min(46vh,420px)] w-full overflow-hidden rounded-[20px] border border-white/[0.12] bg-black/20 md:h-[440px]" />
 }
 
 export function CircuitsPanel() {
@@ -531,8 +541,8 @@ export function CircuitsPanel() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] overflow-x-hidden">
-      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:sticky md:top-0 md:flex md:max-h-[100dvh] md:h-screen">
+    <div className="member-app flex min-h-[100dvh] overflow-x-hidden md:h-[100dvh] md:min-h-0 md:overflow-hidden">
+      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:max-h-[100dvh] md:h-screen">
         <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
           <Link href="/dashboard/" aria-label="NeuroRun">
             <Mark compact />
@@ -568,7 +578,7 @@ export function CircuitsPanel() {
         </div>
       </MemberMobileDrawer>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden md:h-[100dvh] md:overflow-y-auto">
         <MemberPageHeader
           title="Parcours"
           onMenuClick={() => setSidebarOpen((o) => !o)}
@@ -577,23 +587,18 @@ export function CircuitsPanel() {
         />
 
         <main className="member-main-pad-b mx-auto w-full max-w-6xl flex-1 space-y-5 px-safe py-6 sm:space-y-6 sm:py-8">
-          <p className="text-sm text-white/55">
-            Carte des parcours autour de toi, création point par point, classement des 10 meilleurs temps. Les noms sont
-            filtrés automatiquement (caractères et mots interdits).
-          </p>
-
           {posErr ? <p className="text-xs text-amber-200/90">{posErr}</p> : null}
           {leafletErr ? <p className="text-xs text-red-200/90">{leafletErr}</p> : null}
           {err ? (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">{err}</div>
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">{err}</div>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
+          {/* Contrôle segmenté (même repère que le sélecteur de période du tableau de bord). */}
+          <div className="app-segment">
             <button
               type="button"
-              className={`rounded-xl px-3 py-2 text-xs font-medium ${
-                mode === 'explore' ? 'bg-brand-orange/25 text-white ring-1 ring-brand-orange/45' : 'border border-white/10 bg-white/[0.04] text-white/65'
-              }`}
+              aria-pressed={mode === 'explore'}
+              className={`app-segment-item ${mode === 'explore' ? 'app-segment-item--on' : ''}`}
               onClick={() => {
                 setMode('explore')
                 setCreatePoints([])
@@ -603,9 +608,8 @@ export function CircuitsPanel() {
             </button>
             <button
               type="button"
-              className={`rounded-xl px-3 py-2 text-xs font-medium ${
-                mode === 'create' ? 'bg-brand-orange/25 text-white ring-1 ring-brand-orange/45' : 'border border-white/10 bg-white/[0.04] text-white/65'
-              }`}
+              aria-pressed={mode === 'create'}
+              className={`app-segment-item ${mode === 'create' ? 'app-segment-item--on' : ''}`}
               onClick={() => {
                 setMode('create')
                 setSelected(null)
@@ -639,179 +643,267 @@ export function CircuitsPanel() {
             />
           ) : Lmod && !leafletErr && circuitRunOpen ? (
             <div
-              className="h-[min(52vh,520px)] w-full rounded-xl border border-white/10 bg-black/30 md:h-[420px]"
+              className="h-[min(46vh,420px)] w-full rounded-[20px] border border-white/[0.12] bg-black/30 md:h-[440px]"
               aria-hidden
             />
           ) : (
-            <div className="flex h-[320px] items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-sm text-white/45">
+            <div className="flex h-[min(46vh,420px)] items-center justify-center rounded-[20px] border border-white/[0.12] bg-white/[0.03] text-sm text-white/45 md:h-[440px]">
               Chargement de la carte…
             </div>
           )}
 
           {mode === 'explore' ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="panel p-4">
-                <h2 className="font-display text-sm font-semibold text-white">Rayon de recherche</h2>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <label className="text-xs text-white/50">
-                    km
-                    <input
-                      type="number"
-                      className="field ml-2 mt-1 max-w-[100px]"
-                      min={1}
-                      max={200}
-                      value={radiusKm}
-                      onChange={(e) => setRadiusKm(Math.min(200, Math.max(1, parseInt(e.target.value, 10) || 25)))}
-                    />
-                  </label>
-                  <button type="button" className="btn-quiet px-3 py-2 text-xs" onClick={() => void refreshNearby()} disabled={loadingNear || !pos}>
+            <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="min-w-0 space-y-3">
+                {/* Hauteur fixe : le titre de droite reste sur la même ligne de base. */}
+                <div className="flex h-[52px] flex-col justify-start">
+                  <h2 className="font-display text-[19px] font-semibold leading-tight text-white">
+                    Autour de toi
+                  </h2>
+                  <p className="mt-1 text-[13px] leading-snug text-white/38">
+                    Choisis un rayon, puis un parcours pour voir son détail.
+                  </p>
+                </div>
+
+                <div className="member-scroll-x -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+                  {RADIUS_KM_OPTIONS.map((km) => {
+                    const sel = radiusKm === km
+                    return (
+                      <button
+                        key={km}
+                        type="button"
+                        aria-pressed={sel}
+                        onClick={() => setRadiusKm(km)}
+                        className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[15px] transition ${
+                          sel
+                            ? 'border-brand-orange bg-brand-orange/15 font-medium text-brand-orange'
+                            : 'border-white/[0.08] bg-white/[0.06] text-white/60 hover:border-white/20 hover:text-white/85'
+                        }`}
+                      >
+                        {km} km
+                      </button>
+                    )
+                  })}
+                  <button
+                    type="button"
+                    className="btn-quiet shrink-0 px-3.5 text-[13px]"
+                    style={{ minHeight: 0, paddingTop: 6, paddingBottom: 6 }}
+                    onClick={() => void refreshNearby()}
+                    disabled={loadingNear || !pos}
+                  >
                     {loadingNear ? '…' : 'Actualiser'}
                   </button>
                 </div>
-                <ul className="mt-4 max-h-56 space-y-2 overflow-y-auto text-sm">
-                  {nearby.length === 0 ? (
-                    <li className="text-white/45">Aucun parcours dans ce rayon.</li>
-                  ) : (
-                    nearby.map((c) => (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                            selected?.id === c.id ? 'border-brand-orange/45 bg-brand-orange/10' : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'
-                          }`}
-                          onClick={() => void openDetail(c)}
-                        >
-                          <span className="font-medium text-white">{c.name}</span>
-                          <span className="mt-0.5 block text-[10px] text-white/40">
-                            {formatDistanceM(pathLengthMeters(orderedPathPoints(c.points, c.start_index)))}
-                          </span>
-                        </button>
-                      </li>
-                    ))
-                  )}
-                </ul>
+
+                {nearby.length === 0 && !loadingNear ? (
+                  <p className="py-8 text-center text-[15px] text-white/38">
+                    Aucun parcours dans ce rayon.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {nearby.map((c) => {
+                      const startPt = c.points[c.start_index] ?? c.points[0] ?? null
+                      return (
+                        <CircuitListCard
+                          key={c.id}
+                          circuit={c}
+                          distanceToStartM={
+                            pos && startPt ? haversineMeters(pos, startPt) : null
+                          }
+                          selected={selected?.id === c.id}
+                          onOpen={() => void openDetail(c)}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-              <div className="panel p-4">
-                <h2 className="font-display text-sm font-semibold text-white">Détail</h2>
+
+              <div className="min-w-0 space-y-3 lg:sticky lg:top-4">
+                <div className="flex h-[52px] flex-col justify-start">
+                  <h2 className="font-display text-[19px] font-semibold leading-tight text-white">
+                    Détail du parcours
+                  </h2>
+                  <p className="mt-1 text-[13px] leading-snug text-white/38">
+                    Statistiques, classement et lancement du chrono.
+                  </p>
+                </div>
                 {!selected ? (
-                  <p className="mt-3 text-sm text-white/45">Sélectionne un parcours.</p>
+                  <div className="app-empty">
+                    <p className="text-base font-semibold text-white/92">Aucun parcours sélectionné</p>
+                    <p className="mx-auto mt-1.5 max-w-[280px] text-[13px] leading-[19px] text-white/38">
+                      Choisis un parcours dans la liste ou sur la carte pour voir son détail.
+                    </p>
+                  </div>
                 ) : detailLoading ? (
-                  <p className="mt-3 text-sm text-white/45">Chargement…</p>
+                  <div className="app-skeleton h-[288px]" />
                 ) : detail ? (
-                  <div className="mt-3 space-y-4 text-sm">
-                    <div>
-                      <p className="text-white/85">{detail.circuit.name}</p>
-                      <p className="mt-1 text-xs text-white/45">
-                        Participants distincts : <strong className="text-white/70">{detail.participant_count}</strong> ·
-                        Passages enregistrés :{' '}
-                        <strong className="text-white/70">{detail.completion_count_total}</strong>
-                      </p>
-                      {detail.circuit.points.length >= 2 ? (
-                        <p className="mt-1 text-xs text-white/45">
-                          Longueur du tracé affiché :{' '}
-                          <strong className="text-white/70">
-                            {formatDistanceM(
-                              pathLengthMeters(orderedPathPoints(detail.circuit.points, detail.circuit.start_index)),
-                            )}
-                          </strong>
-                        </p>
-                      ) : null}
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wider text-white/40">Top 10</p>
-                      <ol className="mt-2 space-y-1.5">
-                        {detail.top_times.length === 0 ? (
-                          <li className="text-white/45">Pas encore de temps.</li>
-                        ) : (
-                          detail.top_times.map((t, i) => (
-                            <li key={t.id} className="flex justify-between gap-2 text-white/80">
-                              <span>
-                                {i + 1}. {t.display_name ?? 'Coureur'}
-                              </span>
-                              <span className="shrink-0 font-mono text-brand-ice/90">{formatDurationMs(t.duration_ms)}</span>
-                            </li>
-                          ))
+                  <>
+                    <DetailInfoCard title="À propos de ce parcours">
+                      <InfoRow
+                        label="Créé par"
+                        value={
+                          detail.circuit.creator_display_name?.trim() ||
+                          (detail.circuit.created_by ? 'Membre NeuroRun' : '—')
+                        }
+                      />
+                      <InfoRow
+                        label="Distance totale"
+                        value={fmtCircuitLength(
+                          detail.circuit.length_m ??
+                            pathLengthMeters(
+                              orderedPathPoints(detail.circuit.points, detail.circuit.start_index),
+                            ),
                         )}
-                      </ol>
-                    </div>
-                    <div className="border-t border-white/[0.06] pt-3">
-                      <p className="text-xs text-white/50">
-                        Lance le chrono sur le tracé : départ au point 1, puis chaque point dans l’ordre ; l’arrivée valide
-                        le temps.
+                      />
+                      <InfoRow
+                        label="Record"
+                        value={
+                          detail.top_times.length > 0
+                            ? `${formatDurationMs(detail.top_times[0].duration_ms)} · ${
+                                detail.top_times[0].display_name || 'Anonyme'
+                              }`
+                            : 'Pas encore de temps'
+                        }
+                      />
+                      <InfoRow label="Participants" value={detail.participant_count} />
+                      <InfoRow label="Complétions" value={detail.completion_count_total} />
+                    </DetailInfoCard>
+
+                    {detail.top_times.length > 0 ? (
+                      <LeaderboardCard
+                        rows={detail.top_times.map((t) => ({
+                          id: t.id,
+                          name: t.display_name || 'Anonyme',
+                          time: formatDurationMs(t.duration_ms),
+                        }))}
+                      />
+                    ) : null}
+
+                    <div className="rounded-[20px] border border-white/[0.08] bg-[#0d0f16] p-4">
+                      <p className="text-[13px] leading-relaxed text-white/50">
+                        Lance le chrono sur le tracé : départ au point 1, puis chaque point dans l’ordre ;
+                        l’arrivée valide le temps.
                       </p>
+                      {/* Chrono verrouillé sur le web : fonctionnalité annoncée comme à venir. */}
                       <button
                         type="button"
-                        className="btn-brand mt-3 w-full px-4 py-2.5 text-sm sm:w-auto"
-                        disabled={busy || detail.circuit.points.length < 2}
-                        onClick={() => setCircuitRunOpen(true)}
+                        disabled
+                        aria-disabled="true"
+                        title="Prochainement disponible"
+                        className="mt-3 inline-flex min-h-[50px] w-full cursor-not-allowed items-center justify-center gap-2 rounded-[14px] border border-white/[0.1] bg-white/[0.05] px-5 py-3 text-sm font-medium text-white/40"
                       >
-                        Faire le circuit
+                        <svg
+                          className="h-4 w-4 shrink-0"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                          aria-hidden
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                          />
+                        </svg>
+                        Lancer le parcours
                       </button>
+                      <p className="mt-2 text-center text-[11px] leading-relaxed text-white/35">
+                        Prochainement disponible.
+                      </p>
                     </div>
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-white/45">—</p>
-                )}
+                  </>
+                ) : null}
               </div>
             </div>
           ) : (
-            <div className="panel space-y-4 p-4">
-              <p className="text-sm text-white/65">
-                Clique sur la carte pour placer les points <strong className="text-white/80">dans l’ordre</strong>. Le tracé
-                reste <strong className="text-white/80">ouvert</strong> (pas de ligne entre le dernier et le premier point).
-                Les pastilles numérotées sont visibles sur la carte ; le point de départ a un contour vert.
+            <div className="space-y-4">
+              <p className="text-center text-[13px] leading-relaxed text-white/60">
+                Touche la carte pour placer tes points <strong className="font-medium text-white/85">dans l’ordre</strong>.
+                Le tracé reste ouvert (pas de ligne entre le dernier et le premier point) ; le départ a un contour vert.
               </p>
-              {createPoints.length >= 2 ? (
-                <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-3">
-                  <p className="text-sm text-white/85">
-                    Distance totale :{' '}
-                    <strong className="font-mono text-brand-ice">{formatDistanceM(pathLengthMeters(createPoints))}</strong>
+
+              {/* Récapitulatif du tracé en cours, comme le bloc de stats de l’app. */}
+              <div className="rounded-2xl border border-white/[0.12] bg-white/[0.04] px-4 py-3 text-center">
+                <p className="text-[15px] font-medium text-white/92">
+                  {createPoints.length} point{createPoints.length !== 1 ? 's' : ''} placé
+                  {createPoints.length !== 1 ? 's' : ''}
+                </p>
+                {createPoints.length >= 2 ? (
+                  <p className="mt-1 text-[13px] text-white/60">
+                    Longueur du tracé :{' '}
+                    <strong className="font-semibold text-brand-ice">
+                      {formatDistanceM(pathLengthMeters(createPoints))}
+                    </strong>
                   </p>
+                ) : createPoints.length === 1 ? (
+                  <p className="mt-1 text-[13px] text-white/38">
+                    Ajoute un 2ᵉ point pour tracer la ligne et afficher la distance.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="rounded-[20px] border border-white/[0.08] bg-[#0d0f16] p-4">
+                <div className="flex flex-wrap gap-3">
+                  <label className="block min-w-[200px] flex-1">
+                    <span className="text-[13px] text-white/60">Nom du parcours</span>
+                    <input
+                      className="field mt-1.5 w-full"
+                      value={createName}
+                      onChange={(e) => setCreateName(e.target.value)}
+                      placeholder="Mon parcours"
+                      maxLength={48}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[13px] text-white/60">Départ = point n°</span>
+                    <select
+                      className="field mt-1.5 block"
+                      value={createStart}
+                      onChange={(e) => setCreateStart(parseInt(e.target.value, 10))}
+                      disabled={createPoints.length === 0}
+                    >
+                      {createPoints.map((_, i) => (
+                        <option key={i} value={i}>
+                          {i + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
-              ) : createPoints.length === 1 ? (
-                <p className="text-xs text-white/45">Ajoute au moins un 2ᵉ point pour tracer la ligne et afficher la distance.</p>
-              ) : null}
-              <div className="flex flex-wrap gap-3">
-                <label className="block min-w-[200px] flex-1 text-xs text-white/45">
-                  Nom du parcours
-                  <input
-                    className="field mt-1 w-full"
-                    value={createName}
-                    onChange={(e) => setCreateName(e.target.value)}
-                    placeholder="ex. : Lac nord"
-                    maxLength={48}
-                  />
-                </label>
-                <label className="text-xs text-white/45">
-                  Départ = point n°
-                  <select
-                    className="field mt-1 block"
-                    value={createStart}
-                    onChange={(e) => setCreateStart(parseInt(e.target.value, 10))}
+
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    className="btn-quiet flex-1 text-sm"
+                    onClick={() => setCreatePoints((p) => p.slice(0, -1))}
                     disabled={createPoints.length === 0}
                   >
-                    {createPoints.map((_, i) => (
-                      <option key={i} value={i}>
-                        {i + 1}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn-quiet px-3 py-2 text-xs" onClick={() => setCreatePoints((p) => p.slice(0, -1))} disabled={createPoints.length === 0}>
-                  Retirer dernier point
-                </button>
-                <button type="button" className="btn-quiet px-3 py-2 text-xs" onClick={() => setCreatePoints([])}>
-                  Tout effacer
-                </button>
-                <button type="button" className="btn-brand px-4 py-2 text-xs" disabled={busy} onClick={() => void submitCreate()}>
-                  Publier le parcours
+                    Retirer le dernier point
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-quiet flex-1 text-sm"
+                    onClick={() => setCreatePoints([])}
+                    disabled={createPoints.length === 0}
+                  >
+                    Tout effacer
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="btn-brand mt-2 w-full"
+                  disabled={busy || createPoints.length < 2 || !createName.trim()}
+                  onClick={() => void submitCreate()}
+                >
+                  {busy ? 'Publication…' : 'Enregistrer le parcours'}
                 </button>
               </div>
             </div>
           )}
         </main>
+
       </div>
       {circuitRunOpen && detail && Lmod && selected && circuitRunPortal
         ? createPortal(

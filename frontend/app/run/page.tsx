@@ -76,11 +76,13 @@ export default function RunPage() {
 
   return (
     <div
-      className={`flex overflow-x-hidden ${runFocusMode ? 'h-[100dvh] max-h-[100dvh] min-h-[100dvh]' : 'min-h-[100dvh]'}`}
+      className={`member-app flex overflow-x-hidden md:h-[100dvh] md:overflow-hidden ${
+        runFocusMode ? 'h-[100dvh] max-h-[100dvh] min-h-[100dvh]' : 'min-h-[100dvh] md:min-h-0'
+      }`}
     >
       {!runFocusMode ? (
         <>
-          <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
+          <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
             <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
               <Link href="/dashboard/" aria-label="NeuroRun">
                 <Mark compact />
@@ -124,7 +126,9 @@ export default function RunPage() {
       ) : null}
 
       <div
-        className={`flex min-w-0 flex-1 flex-col overflow-x-hidden ${runFocusMode ? 'min-h-0 bg-surface-0' : ''}`}
+        className={`flex min-w-0 flex-1 flex-col overflow-x-hidden ${
+          runFocusMode ? 'min-h-0 bg-surface-0' : 'md:h-[100dvh] md:overflow-y-auto'
+        }`}
       >
         {!runFocusMode &&
         stravaLinked === false &&
@@ -157,9 +161,11 @@ export default function RunPage() {
             <LiveRunHistory
               apiUnreachableAtLoad={apiUnreachable}
               refreshTrigger={historyTick}
+              birthDate={me?.birth_date}
             />
           ) : null}
         </main>
+
       </div>
     </div>
   )

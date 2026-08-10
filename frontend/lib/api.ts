@@ -185,6 +185,101 @@ export async function checkoutPreview(
   });
 }
 
+export type PaymentConfig = {
+  stripe_enabled: boolean;
+  publishable_key: string;
+  currency: string;
+};
+
+/** Clé publique Stripe servie par l’API (le front est un export statique : pas d’env au runtime). */
+export async function fetchPaymentConfig(): Promise<PaymentConfig> {
+  return api<PaymentConfig>("/api/public/payment-config");
+}
+
+export type CheckoutSessionResult =
+  /** Montant à 0 € (promo 100 %) : l’offre est déjà activée, aucune redirection. */
+  | { free: true; amount_cents: 0; user: MeUser }
+  | {
+      free: false;
+      session_id: string;
+      /** URL de la page de paiement hébergée par Stripe. */
+      url: string;
+      amount_cents: number;
+      currency: string;
+    };
+
+/** Crée la session Stripe Checkout ; le paiement se fait sur checkout.stripe.com. */
+export async function createCheckoutSession(
+  token: string,
+  plan: "strava" | "performance",
+  promoCode?: string,
+): Promise<CheckoutSessionResult> {
+  return api<CheckoutSessionResult>("/api/checkout/session", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      plan,
+      promo_code: promoCode ?? "",
+      origin: typeof window === "undefined" ? "" : window.location.origin,
+      return_path: typeof window === "undefined" ? "" : window.location.pathname,
+    }),
+  });
+}
+
+/** Active l’offre au retour de Stripe — le serveur relit la session chez Stripe avant de l’accorder. */
+export async function confirmCheckoutSession(
+  token: string,
+  sessionId: string,
+): Promise<{ ok: boolean; user: MeUser }> {
+  return api<{ ok: boolean; user: MeUser }>("/api/checkout/confirm", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+}
+
+export type BillingInvoice = {
+  id: string;
+  number?: string;
+  amount_paid_cents: number;
+  currency: string;
+  status: string;
+  paid_at: string;
+  hosted_url?: string;
+  pdf_url?: string;
+};
+
+export type BillingState = {
+  plan: string;
+  has_subscription: boolean;
+  status?: string;
+  amount_cents?: number;
+  currency?: string;
+  /** Prochain prélèvement — absent si la résiliation est programmée. */
+  next_payment_at?: string;
+  /** Fin des droits en cas de résiliation programmée. */
+  ends_at?: string;
+  cancel_at_period_end: boolean;
+  invoices: BillingInvoice[];
+};
+
+export async function fetchBillingState(
+  token: string,
+  init?: Pick<RequestInit, "signal">,
+): Promise<BillingState> {
+  return api<BillingState>("/api/billing/subscription", { token, ...init });
+}
+
+/** Résilie à l’échéance : plus de prélèvement, l’offre reste active jusqu’à la fin de la période payée. */
+export async function cancelBillingSubscription(token: string): Promise<BillingState> {
+  return api<BillingState>("/api/billing/cancel", { method: "POST", token });
+}
+
+/** Annule une résiliation programmée tant que la période payée n’est pas terminée. */
+export async function resumeBillingSubscription(token: string): Promise<BillingState> {
+  return api<BillingState>("/api/billing/resume", { method: "POST", token });
+}
+
 export async function checkoutSubscribe(
   token: string,
   plan: "strava" | "performance",
@@ -367,6 +462,14 @@ export type CircuitSummary = {
   points: CircuitLatLng[];
   center: { type: string; coordinates: number[] };
   created_at: string;
+  /** Longueur totale du tracé boucle (m), calculée côté API. */
+  length_m?: number;
+  /** ID utilisateur créateur (Mongo hex). */
+  created_by?: string;
+  /** Présent sur GET /circuits/:id. */
+  creator_display_name?: string;
+  /** Personnes distinctes ayant enregistré un temps. */
+  participant_count?: number;
 };
 
 export type CircuitTopRow = {
@@ -571,6 +674,9 @@ export async function fetchStravaDashboard(token: string, period: StravaDashboar
   return normalizeStravaDashboard(raw);
 }
 
+/** Fiabilité de la projection pour une distance. */
+export type ForecastConfidence = "high" | "medium" | "low";
+
 export type RaceLegForecast = {
   id: string;
   label: string;
@@ -585,18 +691,38 @@ export type RaceLegForecast = {
   hr_band_low?: number;
   hr_band_high?: number;
   baseline_time_sec?: number;
+  /** Bornes de la fourchette de plausibilité autour de `time_sec`. */
+  time_low_sec?: number;
+  time_high_sec?: number;
+  confidence: ForecastConfidence;
+  /** Sorties dans la bande de preuve directe (0 = projection extrapolée). */
+  direct_runs: number;
+  /** Taille d’échantillon effective (Kish) après pondération récence × proximité. */
+  effective_runs?: number;
+  /** Sortie la plus longue de la fenêtre : garde-fou endurance sur semi / marathon. */
+  longest_run_km?: number;
 };
 
 export type RaceForecastPayload = {
   legs: RaceLegForecast[];
   runs_analyzed: number;
   generated_at: string;
+  /** Profondeur d’historique réellement prise en compte. */
+  window_days?: number;
+  /** Sortie la plus longue de la fenêtre, toutes distances confondues. */
+  longest_run_km?: number;
 };
+
+function normalizeConfidence(v: unknown): ForecastConfidence {
+  return v === "high" || v === "low" ? v : "medium";
+}
 
 function normalizeRaceForecastPayload(d: RaceForecastPayload): RaceForecastPayload {
   return {
     runs_analyzed: typeof d.runs_analyzed === "number" ? d.runs_analyzed : 0,
     generated_at: d.generated_at == null ? "" : String(d.generated_at),
+    window_days: typeof d.window_days === "number" ? d.window_days : undefined,
+    longest_run_km: typeof d.longest_run_km === "number" ? d.longest_run_km : undefined,
     legs: asArray(d.legs).map((leg) => ({
       id: leg.id == null ? "" : String(leg.id),
       label: leg.label == null ? "" : String(leg.label),
@@ -612,6 +738,12 @@ function normalizeRaceForecastPayload(d: RaceForecastPayload): RaceForecastPaylo
       hr_band_high: typeof leg.hr_band_high === "number" ? leg.hr_band_high : undefined,
       baseline_time_sec:
         typeof leg.baseline_time_sec === "number" ? leg.baseline_time_sec : undefined,
+      time_low_sec: typeof leg.time_low_sec === "number" ? leg.time_low_sec : undefined,
+      time_high_sec: typeof leg.time_high_sec === "number" ? leg.time_high_sec : undefined,
+      confidence: normalizeConfidence(leg.confidence),
+      direct_runs: typeof leg.direct_runs === "number" ? leg.direct_runs : 0,
+      effective_runs: typeof leg.effective_runs === "number" ? leg.effective_runs : undefined,
+      longest_run_km: typeof leg.longest_run_km === "number" ? leg.longest_run_km : undefined,
     })),
   };
 }
@@ -923,6 +1055,27 @@ export type LiveRunTrackPoint = {
   alt_m?: number;
   heading_deg?: number;
   speed_mps?: number;
+  /** Présent quand la trace inclut la FC (ex. import Strava avec flux heartrate). */
+  hr_bpm?: number;
+};
+
+/** Métriques agrégées calculées à l’enregistrement de la course (côté client). */
+export type LiveRunClientStats = {
+  max_speed_kmh: number;
+  avg_speed_kmh: number;
+  avg_pace_sec_per_km: number;
+  min_split_pace_sec_per_km: number;
+  max_split_pace_sec_per_km: number;
+  elevation_gain_m: number;
+  elevation_loss_m: number;
+  max_altitude_m: number;
+  min_altitude_m: number;
+  pause_overhead_sec: number;
+  track_point_count: number;
+  split_count: number;
+  distance_km: number;
+  moving_sec: number;
+  wall_sec: number;
 };
 
 export type LiveRunPayload = {
@@ -991,6 +1144,13 @@ export type LiveRunDetail = {
   screen_h?: number;
   online_at_end?: boolean;
   auto_pause_detected?: boolean;
+  client_stats?: LiveRunClientStats | null;
+  /** Présent pour les sorties chargées depuis Strava. */
+  strava_activity_id?: number;
+  activity_name?: string;
+  activity_type?: string;
+  avg_heartrate?: number;
+  max_heartrate?: number;
 };
 
 export async function getLiveRun(
@@ -999,6 +1159,73 @@ export async function getLiveRun(
 ): Promise<LiveRunDetail> {
   return api<LiveRunDetail>(
     `/api/live-runs/${encodeURIComponent(id)}`,
+    { token },
+  );
+}
+
+/** Une entrée du flux d’historique : course NeuroRun (live) ou sortie Strava. */
+export type RunHistoryFeedItem = {
+  source: "live" | "strava";
+  /** Live uniquement */
+  id?: string;
+  /** Live uniquement */
+  created_at?: string;
+  /** Strava uniquement */
+  strava_activity_id?: number;
+  /** Strava uniquement : titre de l’activité */
+  name?: string;
+  /** Strava uniquement */
+  start_date?: string;
+  distance_m: number;
+  moving_sec: number;
+  elapsed_sec?: number;
+  avg_pace_sec_per_km: number;
+  split_count?: number;
+  activity_type?: string;
+  /** Dénivelé positif (m), Strava. */
+  elevation_gain_m?: number;
+  /** Vitesse max (km/h), Strava. */
+  max_speed_kmh?: number;
+  /** Fréquence cardiaque moyenne (bpm), Strava. */
+  avg_heartrate?: number;
+};
+
+/**
+ * Historique fusionné courses NeuroRun + sorties Strava, trié par date décroissante
+ * (même endpoint que l’app mobile). `strava_included` est faux si Strava n’est pas
+ * lié ou si l’appel Strava a échoué côté serveur.
+ */
+export async function fetchRunHistoryFeed(
+  token: string,
+  params?: { limit?: number; before?: string },
+): Promise<{
+  items: RunHistoryFeedItem[];
+  next_before?: string;
+  strava_included: boolean;
+}> {
+  const q = new URLSearchParams();
+  if (params?.limit != null && params.limit > 0) q.set("limit", String(params.limit));
+  if (params?.before) q.set("before", params.before);
+  const qs = q.toString();
+  const d = await api<{
+    items: RunHistoryFeedItem[];
+    next_before?: string;
+    strava_included?: boolean;
+  }>(`/api/run-history/feed${qs ? `?${qs}` : ""}`, { token });
+  return {
+    items: asArray(d.items),
+    next_before: d.next_before,
+    strava_included: Boolean(d.strava_included),
+  };
+}
+
+/** Détail d’une sortie Strava, renvoyé au même format qu’une course live. */
+export async function getStravaActivityDetail(
+  token: string,
+  stravaActivityId: number,
+): Promise<LiveRunDetail> {
+  return api<LiveRunDetail>(
+    `/api/strava/activities/${encodeURIComponent(String(stravaActivityId))}`,
     { token },
   );
 }

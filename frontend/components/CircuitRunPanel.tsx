@@ -547,7 +547,7 @@ export function CircuitRunPanel({
         )}
       </header>
 
-      <div ref={containerRef} className="h-[min(42vh,360px)] w-full shrink-0 border-b border-white/[0.06] md:h-[45vh]" />
+      <div ref={containerRef} className="relative isolate z-0 h-[min(42vh,360px)] w-full shrink-0 overflow-hidden border-b border-white/[0.06] md:h-[45vh]" />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-safe py-4">
         {phase === 'idle' && (

@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FormEvent, useEffect, useId, useState } from 'react'
+import { BillingPanel } from '@/components/BillingPanel'
 import { GenderSelect } from '@/components/auth/GenderSelect'
+import { GradientText } from '@/components/GradientText'
 import { Mark } from '@/components/Mark'
 import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 import { MemberPageHeader } from '@/components/MemberPageHeader'
@@ -30,6 +32,20 @@ function planLabel(plan?: string): { title: string; hint: string } {
       return { title: 'Strava', hint: 'Tableau de bord et coach enrichi par tes sorties.' }
     default:
       return { title: 'Standard', hint: 'Offre gratuite : coach IA, sans sync Strava payante.' }
+  }
+}
+
+function userInitials(first?: string | null, last?: string | null): string {
+  const a = (first?.trim()?.[0] ?? '').toUpperCase()
+  const b = (last?.trim()?.[0] ?? '').toUpperCase()
+  return `${a}${b}` || '?'
+}
+
+function memberSince(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+  } catch {
+    return iso
   }
 }
 
@@ -107,6 +123,19 @@ export default function ProfilePage() {
   function logout() {
     clearToken()
     router.push('/login/')
+  }
+
+  /** Après résiliation ou reprise : le plan effectif a pu changer côté API. */
+  async function refreshMe() {
+    const token = getToken()
+    if (!token) return
+    try {
+      const u = await fetchMe(token)
+      setMe(u)
+      saveMeCache(u)
+    } catch {
+      /* Non bloquant : l’état affiché par le panneau abonnement fait foi. */
+    }
   }
 
   async function onSave(e: FormEvent) {
@@ -206,8 +235,8 @@ export default function ProfilePage() {
   const birthMax = new Date().toISOString().slice(0, 10)
 
   return (
-    <div className="flex min-h-[100dvh] overflow-x-hidden">
-      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
+    <div className="member-app flex min-h-[100dvh] overflow-x-hidden md:h-[100dvh] md:min-h-0 md:overflow-hidden">
+      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
         <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
           <Link href="/dashboard/" aria-label="NeuroRun">
             <Mark compact />
@@ -248,7 +277,7 @@ export default function ProfilePage() {
         </div>
       </MemberMobileDrawer>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden md:h-[100dvh] md:overflow-y-auto">
         {!me.strava_linked && stravaOffer ? <StravaLinkBanner /> : null}
         <MemberPageHeader
           title="Profil"
@@ -258,24 +287,60 @@ export default function ProfilePage() {
           maxWidthClass="mx-auto w-full max-w-xl"
         />
 
-        <main className="member-main-pad-b mx-auto w-full max-w-xl flex-1 space-y-8 px-safe py-6 sm:py-8">
-          <section className="panel p-5 sm:p-6">
-            <h2 className="font-display text-sm font-semibold text-white">Ton offre</h2>
-            <p className="mt-2 text-lg font-medium text-white/90">{plan.title}</p>
-            <p className="mt-1 text-sm text-white/45">{plan.hint}</p>
+        <main className="member-main-pad-b mx-auto w-full max-w-xl flex-1 space-y-6 px-safe py-6 sm:py-8">
+          {/* Héro d’identité — avatar dégradé, nom, email, ancienneté (comme l’app) */}
+          <section className="overflow-hidden rounded-[20px] border border-white/[0.08] bg-gradient-to-br from-[#13161f] to-[#0d0f16] p-5">
+            <div className="flex items-center gap-4">
+              <span
+                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full font-display text-xl font-bold tracking-wide text-white"
+                style={{ backgroundImage: 'linear-gradient(135deg, #fc4c02 0%, #c73d00 100%)' }}
+              >
+                {userInitials(me.first_name, me.last_name)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-display text-xl font-semibold leading-tight text-white">
+                  {[me.first_name, me.last_name].filter(Boolean).join(' ') || 'Runner'}
+                </p>
+                <p className="mt-1 truncate text-sm text-white/45">{me.email}</p>
+              </div>
+            </div>
+            <div className="mt-4 border-t border-white/[0.08] pt-3">
+              <p className="text-[13px] text-white/38">Membre depuis {memberSince(me.created_at)}</p>
+            </div>
+          </section>
+
+          {/* Carte offre — libellé à dégradé animé (fire / ice) comme sur l’app */}
+          <section
+            className={`rounded-[20px] border p-5 ${
+              me.plan === 'strava'
+                ? 'border-brand-ice/25 bg-brand-ice/[0.05]'
+                : me.plan === 'performance'
+                  ? 'border-brand-orange/25 bg-brand-orange/[0.06]'
+                  : 'border-white/[0.08] bg-[#0d0f16]'
+            }`}
+          >
+            <p className="app-kicker text-white/38">Offre actuelle</p>
+            {me.plan === 'strava' || me.plan === 'performance' ? (
+              <p className="mt-1.5 font-display text-[26px] font-bold leading-8">
+                <GradientText tone={me.plan === 'strava' ? 'ice' : 'fire'}>{plan.title}</GradientText>
+              </p>
+            ) : (
+              <p className="mt-1.5 font-display text-[26px] font-bold leading-8 text-white">{plan.title}</p>
+            )}
+            <p className="mt-1.5 text-sm leading-relaxed text-white/45">{plan.hint}</p>
             {me.plan !== 'performance' ? (
               <div className="mt-4 flex flex-wrap gap-2">
                 {me.plan === 'standard' ? (
                   <>
-                    <Link href="/checkout/strava/" className="btn-quiet px-4 py-2 text-xs sm:text-sm">
+                    <Link href="/checkout/strava/" className="btn-quiet px-4 text-sm">
                       Passer à Strava
                     </Link>
-                    <Link href="/checkout/performance/" className="btn-brand px-4 py-2 text-xs sm:text-sm">
+                    <Link href="/checkout/performance/" className="btn-brand px-4 text-sm">
                       Performance
                     </Link>
                   </>
                 ) : me.plan === 'strava' ? (
-                  <Link href="/checkout/performance/" className="btn-brand px-4 py-2 text-xs sm:text-sm">
+                  <Link href="/checkout/performance/" className="btn-brand px-4 text-sm">
                     Passer à Performance
                   </Link>
                 ) : null}
@@ -289,6 +354,8 @@ export default function ProfilePage() {
               </Link>
             </p>
           </section>
+
+          <BillingPanel onPlanChange={refreshMe} />
 
           {stravaOffer ? (
             <section className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-sm text-white/55">
@@ -410,6 +477,13 @@ export default function ProfilePage() {
               Supprimer le compte efface tout : conversations avec le coach, objectifs et plans, historique des courses
               live, et la liaison Strava côté serveur.
             </p>
+            {me.plan !== 'standard' ? (
+              <p className="mt-2 text-sm leading-relaxed text-red-100/75">
+                Ton abonnement sera résilié immédiatement : plus aucun prélèvement, mais le temps restant
+                du mois déjà payé est perdu. Pour en profiter jusqu’au bout, résilie d’abord depuis la
+                section Abonnement et supprime ton compte à l’échéance.
+              </p>
+            ) : null}
             {deleteErr ? (
               <p className="mt-3 text-sm text-red-200/95">{deleteErr}</p>
             ) : null}
@@ -435,6 +509,7 @@ export default function ProfilePage() {
             </button>
           </section>
         </main>
+
       </div>
     </div>
   )

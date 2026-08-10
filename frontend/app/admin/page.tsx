@@ -388,7 +388,7 @@ export default function AdminPage() {
   const maxSignup = Math.max(1, ...(stats?.signups_by_day?.map((d) => d.count) ?? [1]))
 
   return (
-    <div className="min-h-screen">
+    <div className="member-app min-h-screen">
       <header className="border-b border-white/[0.06] bg-surface-0/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-5 py-4">
           <Link href="/dashboard/">

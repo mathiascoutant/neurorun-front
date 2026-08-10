@@ -137,6 +137,294 @@
   }
 }
 
+/*
+ * ————————————————————————————————————————————————————————————————
+ * Espace connecté : reprise du design de l’app mobile (neurorun-app)
+ * Tokens alignés sur src/theme/* : bg #05060a, card #0d0f16,
+ * cardElevated #13161f, surface #1a1e2a, brand #fc4c02 → #c73d00, ice #67e8f9.
+ * Toutes ces règles sont scopées à `.member-app` pour ne pas toucher le site public.
+ * ————————————————————————————————————————————————————————————————
+ */
+@layer components {
+  .member-app {
+    position: relative;
+    isolation: isolate;
+    background-color: #05060a;
+  }
+  /* Halo orange haut de page (équivalent du LinearGradient `topGlow` de l’app). */
+  .member-app::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 420px;
+    pointer-events: none;
+    z-index: -1;
+    background: radial-gradient(
+      ellipse 130% 100% at 50% -25%,
+      rgba(252, 76, 2, 0.18),
+      rgba(252, 76, 2, 0.05) 42%,
+      transparent 72%
+    );
+  }
+
+  /* Cartes : opaques et nettes comme dans l’app (pas de verre dépoli). */
+  .member-app .panel {
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: #0d0f16;
+    backdrop-filter: none;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
+  }
+
+  /* Bouton principal : dégradé brand → brandDark, 135°, comme Button.tsx. */
+  .member-app .btn-brand {
+    @apply inline-flex min-h-[50px] touch-manipulation items-center justify-center gap-2 rounded-[14px] px-5 py-3 text-[15px] font-medium text-white transition disabled:pointer-events-none disabled:opacity-45;
+    background-image: linear-gradient(135deg, #fc4c02 0%, #c73d00 100%);
+    background-color: #fc4c02;
+    box-shadow: 0 8px 24px rgba(252, 76, 2, 0.22);
+    font-family: var(--font-ibm), system-ui, sans-serif;
+  }
+  .member-app .btn-brand:hover {
+    background-image: linear-gradient(135deg, #ff5a12 0%, #d24400 100%);
+  }
+  .member-app .btn-brand:active {
+    opacity: 0.88;
+    transform: none;
+  }
+
+  .member-app .btn-quiet {
+    min-height: 50px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background-color: rgba(252, 76, 2, 0.08);
+    color: #f0f0f5;
+    font-weight: 500;
+  }
+  .member-app .btn-quiet:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    background-color: rgba(252, 76, 2, 0.14);
+  }
+
+  .member-app .field {
+    min-height: 52px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.04);
+    color: #f0f0f5;
+  }
+  .member-app .field:focus {
+    border-color: rgba(252, 76, 2, 0.4);
+    --tw-ring-color: rgba(252, 76, 2, 0.18);
+  }
+
+  /* — Blocs repris tels quels de l’app — */
+
+  .app-kicker {
+    font-family: var(--font-ibm), system-ui, sans-serif;
+    font-size: 11px;
+    line-height: 13px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .app-card {
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: #0d0f16;
+  }
+  /* Carte héro : dégradé orange → carte, grande métrique */
+  .app-hero {
+    border-radius: 24px;
+    border: 1px solid rgba(252, 76, 2, 0.22);
+    background-image: linear-gradient(
+      135deg,
+      rgba(252, 76, 2, 0.22) 0%,
+      rgba(252, 76, 2, 0.05) 45%,
+      rgba(13, 15, 22, 0.9) 100%
+    );
+    background-color: #0d0f16;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+  }
+  .app-hero-value {
+    font-family: var(--font-sora), system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 46px;
+    line-height: 50px;
+    letter-spacing: -1.5px;
+    color: #fff;
+  }
+  @media (min-width: 640px) {
+    .app-hero-value {
+      font-size: 52px;
+      line-height: 56px;
+    }
+  }
+  .app-hero-pill {
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: rgba(0, 0, 0, 0.25);
+    padding: 5px 10px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  /* Contrôle segmenté (sélecteur de période) */
+  .app-segment {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+  /* Sur grand écran, le contrôle reste compact plutôt que d’occuper toute la largeur. */
+  @media (min-width: 640px) {
+    .app-segment {
+      max-width: 30rem;
+    }
+  }
+  .app-segment-item {
+    flex: 1 1 0%;
+    min-width: 0;
+    border-radius: 9999px;
+    padding: 9px 10px;
+    font-family: var(--font-ibm), system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 17px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    color: rgba(255, 255, 255, 0.6);
+    transition: color 0.18s ease, background-color 0.18s ease;
+    white-space: nowrap;
+  }
+  .app-segment-item:hover {
+    color: rgba(255, 255, 255, 0.9);
+  }
+  .app-segment-item--on {
+    color: #fff;
+    background-image: linear-gradient(135deg, #fc4c02 0%, #c73d00 100%);
+  }
+
+  /* Note d’information (ton glace) */
+  .app-note {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(103, 232, 249, 0.14);
+    background-color: rgba(103, 232, 249, 0.06);
+    font-size: 13px;
+    line-height: 19px;
+    color: rgba(255, 255, 255, 0.6);
+  }
+  .app-note strong {
+    color: #f0f0f5;
+    font-weight: 600;
+  }
+
+  /* Pastille d’icône colorée (cartes d’action, lignes de réglages) */
+  .app-icon-tile {
+    display: inline-flex;
+    height: 40px;
+    width: 40px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+
+  /* État vide (bordure pointillée) */
+  .app-empty {
+    border-radius: 20px;
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    background-color: #0d0f16;
+    padding: 32px 20px;
+    text-align: center;
+  }
+
+  /* Squelette de chargement */
+  .app-skeleton {
+    width: 100%;
+    border-radius: 20px;
+    background-color: #1a1e2a;
+    animation: app-pulse 1.56s ease-in-out infinite;
+  }
+  @keyframes app-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 0.75;
+    }
+  }
+
+  /*
+   * Texte à dégradé animé (équivalent web de MaskedGradientText).
+   * Les tons sombres du dégradé natif sont retirés : sur écran large, une bande
+   * quasi noire resterait lisible trop longtemps.
+   */
+  .grad-text {
+    background-size: 280% 100%;
+    background-position: 0% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: grad-slide 3.2s ease-in-out infinite alternate;
+  }
+  .grad-text--fire {
+    background-image: linear-gradient(
+      100deg,
+      #f97316 0%,
+      #fb923c 14%,
+      #fcd34d 30%,
+      #fffbeb 44%,
+      #fde68a 58%,
+      #fb923c 72%,
+      #ef4444 86%,
+      #f97316 100%
+    );
+  }
+  .grad-text--ice {
+    background-image: linear-gradient(
+      100deg,
+      #0284c7 0%,
+      #0ea5e9 14%,
+      #38bdf8 30%,
+      #67e8f9 44%,
+      #a5f3fc 56%,
+      #ecfeff 68%,
+      #67e8f9 84%,
+      #0284c7 100%
+    );
+  }
+  @keyframes grad-slide {
+    from {
+      background-position: 0% 50%;
+    }
+    to {
+      background-position: 100% 50%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .grad-text,
+    .app-skeleton {
+      animation: none;
+    }
+    .grad-text {
+      background-position: 45% 50%;
+    }
+  }
+
+}
+
 /* Zones sûres (encoches, barre d’accueil) — viewportFit: cover dans layout */
 @layer utilities {
   .px-safe {
@@ -148,6 +436,18 @@
   }
   .pb-safe {
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  }
+  /*
+   * Coach : le composeur est en position fixe au-dessus du fil. Sans cette réserve,
+   * le dernier message passe dessous. Mobile = champ + bouton empilés, donc plus haut.
+   */
+  .chat-scroll-pad-b {
+    padding-bottom: calc(10rem + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 640px) {
+    .chat-scroll-pad-b {
+      padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
+    }
   }
   .member-scroll-x {
     -webkit-overflow-scrolling: touch;

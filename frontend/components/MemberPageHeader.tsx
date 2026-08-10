@@ -11,6 +11,8 @@ export type MemberPageHeaderProps = {
   /** ex. mx-auto w-full max-w-6xl */
   maxWidthClass?: string
   title?: string
+  /** Sous-titre sous le titre (comme `ScreenHeader` de l’app) */
+  subtitle?: string
   onMenuClick?: () => void
   /** État du tiroir (aria-expanded / controls) */
   menuOpen?: boolean
@@ -23,15 +25,16 @@ export function MemberPageHeader({
   onLogout,
   maxWidthClass = 'mx-auto w-full max-w-6xl',
   title,
+  subtitle,
   onMenuClick,
   menuOpen = false,
   menuDrawerId = MEMBER_MOBILE_NAV_DRAWER_ID,
   leading,
 }: MemberPageHeaderProps) {
   return (
-    <header className="sticky top-0 z-20 border-b border-white/[0.05] bg-surface-0/80 pt-safe backdrop-blur-lg supports-[backdrop-filter]:bg-surface-0/65">
+    <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-[#05060a]/85 pt-safe backdrop-blur-xl supports-[backdrop-filter]:bg-[#05060a]/72">
       <div
-        className={`flex items-center justify-between gap-2 sm:gap-4 ${maxWidthClass} px-safe py-2.5 sm:py-3`}
+        className={`flex items-center justify-between gap-2 sm:gap-4 ${maxWidthClass} px-safe py-3 sm:py-3.5`}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           {onMenuClick ? (
@@ -57,9 +60,14 @@ export function MemberPageHeader({
           {leading ? (
             <div className="min-w-0">{leading}</div>
           ) : title ? (
-            <h1 className="min-w-0 truncate font-display text-[0.9375rem] font-semibold tracking-tight text-white/92 sm:text-base">
-              {title}
-            </h1>
+            <div className="min-w-0">
+              <h1 className="min-w-0 truncate font-display text-lg font-bold tracking-[-0.01em] text-white sm:text-[1.375rem]">
+                {title}
+              </h1>
+              {subtitle ? (
+                <p className="mt-0.5 truncate text-[13px] leading-snug text-white/55">{subtitle}</p>
+              ) : null}
+            </div>
           ) : null}
         </div>
         <button type="button" className={logoutBtnClass} onClick={onLogout}>

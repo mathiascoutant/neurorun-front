@@ -31,13 +31,58 @@ import {
 } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 
-const PERIODS: { id: StravaDashboardPeriod; label: string }[] = [
-  { id: '7d', label: '7 jours' },
-  { id: '30d', label: '30 jours' },
-  { id: '90d', label: '3 mois' },
-  { id: '365d', label: '1 an' },
-  { id: 'all', label: 'Depuis le début' },
+/** Libellés courts façon contrôle segmenté de l’app (7J / 30J / 3M / 1A / Tout). */
+const PERIODS: { id: StravaDashboardPeriod; label: string; long: string }[] = [
+  { id: '7d', label: '7J', long: '7 derniers jours' },
+  { id: '30d', label: '30J', long: '30 derniers jours' },
+  { id: '90d', label: '3M', long: '3 derniers mois' },
+  { id: '365d', label: '1A', long: 'dernière année' },
+  { id: 'all', label: 'Tout', long: 'historique complet' },
 ]
+
+function periodLongLabel(id: StravaDashboardPeriod): string {
+  return PERIODS.find((p) => p.id === id)?.long ?? ''
+}
+
+function greeting(): string {
+  const h = new Date().getHours()
+  if (h < 6) return 'Bonne nuit'
+  if (h < 12) return 'Bonjour'
+  if (h < 18) return 'Bon après-midi'
+  return 'Bonsoir'
+}
+
+function todayLabel(): string {
+  return new Date()
+    .toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+    .replace('.', '')
+}
+
+function initials(first?: string, last?: string): string {
+  const a = (first ?? '').trim().charAt(0)
+  const b = (last ?? '').trim().charAt(0)
+  return `${a}${b}`.toUpperCase() || 'R'
+}
+
+/** Heures décimales → « 4h32 » / « 48 » (+ unité « min » séparée). */
+function formatDuration(hours: number): string {
+  const totalMin = Math.round(hours * 60)
+  if (totalMin < 60) return String(totalMin)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return `${h}h${m.toString().padStart(2, '0')}`
+}
+
+function planInfo(plan?: string): { title: string; accent: string } {
+  switch ((plan ?? 'standard').toLowerCase().trim()) {
+    case 'performance':
+      return { title: 'Performance', accent: '#fc4c02' }
+    case 'strava':
+      return { title: 'Strava', accent: '#67e8f9' }
+    default:
+      return { title: 'Standard', accent: 'rgba(255,255,255,0.6)' }
+  }
+}
 
 const tip = {
   contentStyle: {
@@ -210,8 +255,8 @@ export function RunDashboard() {
   }))
 
   return (
-    <div className="flex min-h-[100dvh] overflow-x-hidden">
-      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:sticky md:top-0 md:flex md:max-h-[100dvh] md:h-screen">
+    <div className="member-app flex min-h-[100dvh] overflow-x-hidden md:h-[100dvh] md:min-h-0 md:overflow-hidden">
+      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:max-h-[100dvh] md:h-screen">
         <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
           <Link href="/dashboard/" aria-label="NeuroRun">
             <Mark compact />
@@ -252,7 +297,7 @@ export function RunDashboard() {
         </div>
       </MemberMobileDrawer>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden md:h-[100dvh] md:overflow-y-auto">
         {!stravaLinked && stravaOffer ? <StravaLinkBanner /> : null}
         <MemberPageHeader
           title="Tableau de bord"
@@ -262,54 +307,110 @@ export function RunDashboard() {
         />
 
         <main className="member-main-pad-b mx-auto w-full max-w-6xl flex-1 space-y-5 px-safe py-6 sm:space-y-6 sm:py-8">
-        {stravaLinked && stravaOffer ? (
-        <div className="-mx-1 member-scroll-x flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
-          {PERIODS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPeriod(p.id)}
-              className={`shrink-0 rounded-xl px-3 py-2 text-xs font-medium transition ${
-                period === p.id
-                  ? 'bg-brand-orange/25 text-white ring-1 ring-brand-orange/45'
-                  : 'border border-white/10 bg-white/[0.04] text-white/60 hover:border-white/20 hover:text-white/85'
-              }`}
+        {/* En-tête d’accueil — salutation, date, avatar et offre, comme sur l’app */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium uppercase leading-none tracking-[0.14em] text-white/38">
+                {todayLabel()}
+              </p>
+              <h2 className="mt-1.5 truncate font-display text-[1.625rem] font-bold leading-8 text-white">
+                {greeting()}, {me.first_name || 'Runner'}
+              </h2>
+            </div>
+            <span className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-brand-orange/45">
+              <span className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-[#1a1e2a] font-display text-sm font-semibold tracking-wide text-white/92">
+                {initials(me.first_name, me.last_name)}
+              </span>
+            </span>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-[7px]">
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: planInfo(me.plan).accent }}
+            />
+            <span className="text-[11px] uppercase leading-none tracking-[0.11em] text-white/38">Offre</span>
+            <span
+              className="font-display text-[13px] font-semibold leading-none"
+              style={{ color: planInfo(me.plan).accent }}
             >
-              {p.label}
-            </button>
-          ))}
+              {planInfo(me.plan).title}
+            </span>
+          </div>
         </div>
+
+        {stravaLinked && stravaOffer ? (
+          <div className="app-segment">
+            {PERIODS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={period === p.id}
+                onClick={() => setPeriod(p.id)}
+                className={`app-segment-item ${period === p.id ? 'app-segment-item--on' : ''}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         ) : null}
 
         {err ? (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
             {err}
           </div>
         ) : null}
 
-        {stravaLinked && loading ? <p className="text-sm text-white/45">Chargement des sorties…</p> : null}
+        {stravaLinked && loading ? (
+          <div className="space-y-4">
+            <div className="app-skeleton h-[186px]" />
+            <div className="app-skeleton h-[54px]" />
+            <div className="app-skeleton h-[288px]" />
+          </div>
+        ) : null}
 
         {!stravaLinked && !loading && stravaOffer ? (
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center">
-            <p className="text-sm text-white/70">
-              Les graphiques et statistiques apparaîtront ici une fois Strava associé.
+          <div className="app-card p-5">
+            <div className="flex items-center gap-3">
+              <span className="app-icon-tile border-brand-ice/25 bg-brand-ice/[0.12] text-brand-ice">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
+                  />
+                </svg>
+              </span>
+              <h3 className="font-display text-base font-semibold text-white/95">Relier Strava</h3>
+            </div>
+            <p className="mt-3 text-[15px] leading-relaxed text-white/60">
+              Ton offre le permet : synchronise Strava pour voir ici tout ton volume, tes allures et tes tendances.
             </p>
-            <Link
-              href="/link-strava/"
-              className="btn-brand mt-4 inline-flex px-5 py-2.5 text-sm"
-            >
+            <Link href="/link-strava/" className="btn-brand mt-4 w-full sm:w-auto">
               Associer Strava
             </Link>
           </div>
         ) : null}
 
         {!stravaOffer && !loading ? (
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center">
-            <p className="text-sm text-white/70">
+          <div className="app-card p-5">
+            <div className="flex items-center gap-3">
+              <span className="app-icon-tile border-yellow-400/25 bg-yellow-400/[0.12] text-yellow-400">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                  />
+                </svg>
+              </span>
+              <h3 className="font-display text-base font-semibold text-white/95">Tableau de bord Strava</h3>
+            </div>
+            <p className="mt-3 text-[15px] leading-relaxed text-white/60">
               Strava et les tableaux liés ne sont pas activés pour ton offre actuelle. Passe à une offre supérieure ou
               contacte un administrateur.
             </p>
-            <Link href="/" className="btn-quiet mt-4 inline-flex px-5 py-2.5 text-sm">
+            <Link href="/profile/" className="btn-quiet mt-4 inline-flex w-full px-5 sm:w-auto">
               Voir les offres
             </Link>
           </div>
@@ -317,23 +418,84 @@ export function RunDashboard() {
 
         {!loading && data ? (
           <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-              <div className="panel p-4">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">Distance totale</p>
-                <p className="mt-1 font-display text-2xl font-semibold text-white">{data.total_km} km</p>
-                <p className="mt-1 text-[11px] text-white/35">Sur la période sélectionnée</p>
+            {/* Carte héro : métrique principale + métriques secondaires */}
+            <div className="app-hero p-5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="app-kicker">Distance totale</p>
+                <span className="app-hero-pill">{periodLongLabel(period)}</span>
               </div>
-              <div className="panel p-4">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">Temps en mouvement</p>
-                <p className="mt-1 font-display text-2xl font-semibold text-white">{data.total_hours} h</p>
-                <p className="mt-1 text-[11px] text-white/35">Cumul course (trail / virtuel inclus)</p>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="app-hero-value">{data.total_km}</span>
+                <span className="font-display text-xl font-semibold text-brand-orange">km</span>
               </div>
-              <div className="panel p-4">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">Sorties course</p>
-                <p className="mt-1 font-display text-2xl font-semibold text-white">{data.runs_total}</p>
-                <p className="mt-1 text-[11px] text-white/35">Activités Strava type « course »</p>
+              <div className="my-4 h-px bg-white/[0.12]" />
+              <div className="flex items-center">
+                <div className="flex flex-1 flex-col items-center gap-1">
+                  <p className="font-display text-[19px] font-semibold leading-6 tracking-[-0.3px] text-white/94">
+                    {formatDuration(data.total_hours)}
+                    {Math.round(data.total_hours * 60) < 60 ? (
+                      <span className="text-xs font-normal text-white/38"> min</span>
+                    ) : null}
+                  </p>
+                  <p className="text-[11px] leading-none tracking-wide text-white/38">Temps</p>
+                </div>
+                <div className="h-7 w-px bg-white/[0.08]" />
+                <div className="flex flex-1 flex-col items-center gap-1">
+                  <p className="font-display text-[19px] font-semibold leading-6 tracking-[-0.3px] text-white/94">
+                    {data.runs_total}
+                  </p>
+                  <p className="text-[11px] leading-none tracking-wide text-white/38">Sorties</p>
+                </div>
+                <div className="h-7 w-px bg-white/[0.08]" />
+                <div className="flex flex-1 flex-col items-center gap-1">
+                  <p className="font-display text-[19px] font-semibold leading-6 tracking-[-0.3px] text-white/94">
+                    {data.total_km > 0 && data.total_hours > 0
+                      ? formatPaceDecimal((data.total_hours * 60) / data.total_km).replace('/km', '')
+                      : '—'}
+                    {data.total_km > 0 && data.total_hours > 0 ? (
+                      <span className="text-xs font-normal text-white/38">/km</span>
+                    ) : null}
+                  </p>
+                  <p className="text-[11px] leading-none tracking-wide text-white/38">Allure moy.</p>
+                </div>
               </div>
             </div>
+
+            {me.capabilities?.live_runs !== false ? (
+            <Link
+              href="/run/"
+              className="flex items-center gap-3 rounded-[20px] border border-white/[0.08] bg-[#0d0f16] p-4 transition hover:border-white/[0.14] hover:bg-[#13161f]"
+            >
+              <span className="app-icon-tile border-brand-orange/28 bg-brand-orange/[0.15] text-brand-orange">
+                <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 15H3.75z" />
+                </svg>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-semibold leading-tight text-white/92">Démarrer une course</span>
+                <span className="mt-0.5 block text-[13px] text-white/38">Suivi GPS en direct</span>
+              </span>
+              <span className="font-display text-2xl leading-none text-white/20">›</span>
+            </Link>
+            ) : null}
+
+            <p className="app-note">
+              <span className="mt-px shrink-0 text-brand-ice">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M11.25 11.25h1.5v5.25m-.75-9h.008v.008H12V7.5zM21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </span>
+              <span>
+                Tableau <strong>Strava + courses NeuroRun</strong> sur {periodLongLabel(period)} (doublons évidents
+                exclus).
+              </span>
+            </p>
+
+            <h3 className="pt-1 font-display text-[19px] font-semibold text-white">Ton activité</h3>
 
             <div className="panel p-5">
               <h2 className="font-display text-sm font-semibold text-white">Volume hebdomadaire</h2>
@@ -341,7 +503,17 @@ export function RunDashboard() {
                 Kilomètres par semaine (lundi UTC) et fréquence cardiaque moyenne pondérée lorsque disponible.
               </p>
               {weeklyRows.length === 0 ? (
-                <p className="mt-6 text-sm text-white/45">Pas de données sur cette période.</p>
+                <div className="app-empty mt-4">
+                  <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.04] text-white/38">
+                    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v16.5a1.5 1.5 0 001.5 1.5H21M7.5 15.75l3.75-4.5 3 3 4.5-6" />
+                    </svg>
+                  </span>
+                  <p className="text-base font-semibold text-white/92">Aucune course sur cette période</p>
+                  <p className="mx-auto mt-1.5 max-w-[280px] text-[13px] leading-[19px] text-white/38">
+                    Change de période ou enregistre une sortie : tes graphiques apparaîtront ici.
+                  </p>
+                </div>
               ) : (
                 <div className="mt-4 h-[220px] w-full min-w-0 sm:h-[280px] md:h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -453,6 +625,7 @@ export function RunDashboard() {
           ou <span className="text-white/55">Objectifs</span> pour ton plan.
         </p>
         </main>
+
       </div>
     </div>
   )

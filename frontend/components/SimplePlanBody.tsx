@@ -53,6 +53,20 @@ export function SimplePlanBody({ text, className = '' }: { text: string; classNa
             </div>
           )
         }
+        const ordered = /^(\d{1,2})[.)]\s+/.exec(t)
+        if (ordered) {
+          const c = t.slice(ordered[0].length)
+          return (
+            <div key={i} className="ml-0.5 flex gap-2.5 py-0.5">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-orange/15 text-[10px] font-semibold text-brand-orange">
+                {ordered[1]}
+              </span>
+              <p className="min-w-0 flex-1 text-sm leading-relaxed text-white/[0.88]">
+                {formatBold(c, `ol-${i}`)}
+              </p>
+            </div>
+          )
+        }
         if (t === '') {
           return <div key={i} className="h-1.5" />
         }

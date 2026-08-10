@@ -8,6 +8,7 @@ import { Mark } from '@/components/Mark'
 import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 import { MemberPageHeader } from '@/components/MemberPageHeader'
 import { NeuroRunSidebar, type AppSection } from '@/components/NeuroRunSidebar'
+import { SimplePlanBody } from '@/components/SimplePlanBody'
 import { StravaLinkBanner } from '@/components/StravaLinkBanner'
 import {
   chat,
@@ -23,6 +24,18 @@ import { clearToken, getToken } from '@/lib/auth'
 import { saveMeCache } from '@/lib/meCache'
 
 type Msg = { role: 'user' | 'assistant'; text: string }
+
+/** Pastille du coach devant chaque réponse — même repère visuel que l’app. */
+function CoachAvatar() {
+  return (
+    <span
+      className="mt-0.5 flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-brand-orange/30 bg-brand-orange/[0.12] font-display text-[10px] font-bold tracking-wide text-brand-orange"
+      aria-hidden
+    >
+      NR
+    </span>
+  )
+}
 
 const WELCOME: Msg = {
   role: 'assistant',
@@ -279,10 +292,15 @@ function ChatPageContent() {
     )
   }
 
+  /*
+   * Coach : coque à hauteur fixe sur TOUS les écrans. Le fil est le seul élément qui défile ;
+   * sans hauteur bornée il n’est pas un conteneur de défilement, et son `overscroll-contain`
+   * empêche alors le geste de remonter vers la page — plus rien ne défile sur mobile.
+   */
   return (
-    <div className="flex min-h-[100dvh] overflow-x-hidden">
+    <div className="member-app flex h-[100dvh] overflow-hidden">
       {/* Desktop sidebar */}
-      <aside className="relative z-30 hidden w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-surface-1/95 backdrop-blur-xl md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
+      <aside className="relative z-30 hidden w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
         <div className="shrink-0 border-b border-white/[0.06] px-safe pt-safe pb-3">
           <Mark compact />
         </div>
@@ -335,7 +353,7 @@ function ChatPageContent() {
         />
       </MemberMobileDrawer>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {!stravaLinked && stravaOffer ? <StravaLinkBanner /> : null}
         <MemberPageHeader
           title={effectiveSection === 'chat' ? 'Coach' : 'Objectifs'}
@@ -359,35 +377,51 @@ function ChatPageContent() {
         ) : effectiveSection === 'chat' ? (
           <>
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain">
-              <div className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-safe py-5 pb-36 sm:py-6 sm:pb-40">
-                <div className="space-y-4">
-                  {messages.map((msg, i) => (
-                    <div
-                      key={`${msg.role}-${i}-${(msg.text ?? '').slice(0, 12)}`}
-                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-up`}
-                    >
+              <div className="chat-scroll-pad-b mx-auto w-full max-w-3xl flex-1 space-y-4 px-safe py-5 sm:py-6">
+                <div className="space-y-5">
+                  {messages.map((msg, i) =>
+                    msg.role === 'user' ? (
                       <div
-                        className={`max-w-[min(100%,520px)] rounded-2xl px-3 py-2.5 text-sm leading-relaxed shadow-insetline sm:px-4 sm:py-3 ${
-                          msg.role === 'user'
-                            ? 'bg-gradient-to-br from-brand-orange/25 to-brand-deep/20 text-white'
-                            : 'border border-white/[0.08] bg-surface-2/90 text-white/90'
-                        }`}
+                        key={`${msg.role}-${i}-${(msg.text ?? '').slice(0, 12)}`}
+                        className="flex animate-fade-up justify-end"
                       >
-                        {msg.text ?? ''}
+                        <div
+                          className="max-w-[min(100%,520px)] whitespace-pre-wrap rounded-[20px] rounded-br-md px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-insetline"
+                          style={{
+                            backgroundImage:
+                              'linear-gradient(135deg, #fc4c02 0%, #c73d00 100%)',
+                          }}
+                        >
+                          {msg.text ?? ''}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ) : (
+                      <div
+                        key={`${msg.role}-${i}-${(msg.text ?? '').slice(0, 12)}`}
+                        className="flex animate-fade-up items-start gap-2.5"
+                      >
+                        <CoachAvatar />
+                        <div className="min-w-0 max-w-[min(100%,560px)] rounded-[20px] rounded-tl-md border border-white/[0.08] bg-[#13161f] px-4 py-3">
+                          {/* Le coach répond en Markdown léger : sans rendu, HTML écrase les retours à la ligne. */}
+                          <SimplePlanBody
+                            text={msg.text ?? ''}
+                            className="[&_p]:text-[15px] [&_p]:text-white/90"
+                          />
+                        </div>
+                      </div>
+                    ),
+                  )}
                   {loading ? (
-                    <div className="flex justify-start">
-                      <div className="rounded-2xl border border-white/[0.08] bg-surface-2/60 px-4 py-3 text-sm text-white/45">
-                        <span className="inline-flex gap-1">
-                          <span className="animate-pulse">Analyse</span>
-                          <span className="inline-flex gap-0.5 pt-0.5">
-                            <span className="h-1 w-1 animate-bounce rounded-full bg-brand-orange [animation-delay:0ms]" />
-                            <span className="h-1 w-1 animate-bounce rounded-full bg-brand-orange [animation-delay:150ms]" />
-                            <span className="h-1 w-1 animate-bounce rounded-full bg-brand-orange [animation-delay:300ms]" />
-                          </span>
-                        </span>
+                    <div className="flex items-start gap-2.5">
+                      <CoachAvatar />
+                      <div
+                        className="flex items-center gap-1.5 rounded-[20px] rounded-tl-md border border-white/[0.08] bg-[#13161f] px-4 py-4"
+                        aria-live="polite"
+                        aria-label="Le coach réfléchit"
+                      >
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-orange [animation-delay:0ms]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-orange [animation-delay:150ms]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-orange [animation-delay:300ms]" />
                       </div>
                     </div>
                   ) : null}

@@ -89,7 +89,7 @@ function LinkStravaContent() {
   }
 
   return (
-    <main className="min-h-[100dvh] overflow-x-hidden">
+    <main className="member-app min-h-[100dvh] overflow-x-hidden">
       <MemberPageHeader
         onLogout={logout}
         maxWidthClass="mx-auto w-full max-w-3xl"
