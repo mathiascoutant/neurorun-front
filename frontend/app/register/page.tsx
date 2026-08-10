@@ -20,6 +20,16 @@ function safeNext(raw: string | null): string {
   return raw
 }
 
+/**
+ * Offre payante visée par le parcours (`?next=/checkout/strava/`). Transmise à l’inscription pour
+ * que l’admin ne soit notifié qu’au paiement, et non dès la création du compte.
+ */
+function intendedPlanFromNext(raw: string | null): string | undefined {
+  const m = /^\/checkout\/([a-z]+)\/?$/.exec((raw ?? '').toLowerCase())
+  const plan = m?.[1]
+  return plan === 'strava' || plan === 'performance' ? plan : undefined
+}
+
 function isValidEmail(email: string) {
   const t = email.trim()
   return t.length > 3 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)
@@ -142,6 +152,7 @@ function RegisterForm() {
         last_name: lastName.trim(),
         birth_date: birthDate,
         gender,
+        intended_plan: intendedPlanFromNext(searchParams.get('next')),
       })
       setToken(res.token)
       router.push(safeNext(searchParams.get('next')))

@@ -10,6 +10,7 @@ import { clearToken, getToken } from '@/lib/auth'
 import {
   DEFAULT_OFFER_CONFIG,
   TIER_FEATURE_ROWS,
+  capitalize,
   mergePublicOfferConfig,
   orderedTierIds,
   tierLabelFromConfig,
@@ -93,10 +94,6 @@ const OFFER_TAGLINE: Record<string, string> = {
   standard: 'Coach IA standard : conseils et dialogue sans Strava.',
   strava: 'Sync Strava : analyses basées sur tes sorties réelles.',
   performance: 'Complet : IA avancée, Strava et plans sur circuit.',
-}
-
-function capitalize(s: string): string {
-  return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1)
 }
 
 function formatMonthlyEUR(n: number): string {

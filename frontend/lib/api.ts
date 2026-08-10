@@ -79,6 +79,8 @@ export type RegisterPayload = {
   last_name: string;
   birth_date: string;
   gender: RegisterGender;
+  /** Offre payante visée ensuite : diffère la notification admin jusqu’au paiement. */
+  intended_plan?: string;
 };
 
 export type OfferConfigPayload = {

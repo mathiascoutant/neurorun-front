@@ -10,24 +10,27 @@ import {
   createCheckoutSession,
   fetchMe,
   fetchPaymentConfig,
+  fetchPublicOfferConfig,
   type MeUser,
+  type OfferConfigPayload,
 } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
+import {
+  DEFAULT_OFFER_CONFIG,
+  capitalize,
+  mergePublicOfferConfig,
+  tierLabelFromConfig,
+} from '@/lib/offerConfig'
 
 type PaidPlan = 'strava' | 'performance'
 
 /** recap : promo + total, puis redirection vers Stripe. returning : retour de checkout.stripe.com. */
 type Phase = 'loading' | 'recap' | 'redirecting' | 'returning' | 'done'
 
-const LABELS: Record<PaidPlan, { title: string; blurb: string }> = {
-  strava: {
-    title: 'Offre Strava',
-    blurb: 'Synchronisation Strava, tableaux de bord et analyses sur tes sorties.',
-  },
-  performance: {
-    title: 'Offre Performance',
-    blurb: 'IA enrichie, Strava, prévisions et plans circuit.',
-  },
+/** Le nom commercial vient de l’admin (`tier_display_names`) ; seul le descriptif reste local. */
+const BLURBS: Record<PaidPlan, string> = {
+  strava: 'Synchronisation Strava, tableaux de bord et analyses sur tes sorties.',
+  performance: 'IA enrichie, Strava, prévisions et plans circuit.',
 }
 
 function formatEUR(value: number) {
@@ -42,6 +45,7 @@ export function CheckoutPlanClient() {
 
   const [phase, setPhase] = useState<Phase>('loading')
   const [me, setMe] = useState<MeUser | null>(null)
+  const [offerCfg, setOfferCfg] = useState<OfferConfigPayload>(DEFAULT_OFFER_CONFIG)
   const [promo, setPromo] = useState('')
   const [preview, setPreview] = useState<{
     base_price_eur: number
@@ -66,6 +70,21 @@ export function CheckoutPlanClient() {
     },
     [router],
   )
+
+  useEffect(() => {
+    let off = false
+    ;(async () => {
+      try {
+        const cfg = await fetchPublicOfferConfig()
+        if (!off) setOfferCfg(mergePublicOfferConfig(cfg))
+      } catch {
+        /* garde les défauts si l’API est injoignable */
+      }
+    })()
+    return () => {
+      off = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!plan) return
@@ -189,7 +208,7 @@ export function CheckoutPlanClient() {
     )
   }
 
-  const meta = LABELS[plan]
+  const planLabel = capitalize(tierLabelFromConfig(offerCfg, plan))
   const busy = phase === 'redirecting' || phase === 'returning' || phase === 'done'
 
   return (
@@ -222,7 +241,7 @@ export function CheckoutPlanClient() {
           <h1 className="font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">
             Finaliser votre abonnement
           </h1>
-          <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/55">{meta.blurb}</p>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/55">{BLURBS[plan]}</p>
         </div>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_min(380px,100%)] lg:items-start lg:gap-10">
@@ -329,7 +348,7 @@ export function CheckoutPlanClient() {
               </h2>
               <div className="mt-5 space-y-4 border-b border-white/[0.06] pb-5">
                 <div>
-                  <p className="font-display text-lg font-semibold text-white">{meta.title}</p>
+                  <p className="font-display text-lg font-semibold text-white">Offre {planLabel}</p>
                   <p className="mt-1 text-xs capitalize text-white/40">Facturation mensuelle</p>
                 </div>
                 <dl className="space-y-2.5 text-sm">
@@ -341,7 +360,7 @@ export function CheckoutPlanClient() {
                   </div>
                   <div className="flex justify-between gap-3">
                     <dt className="text-white/45">Formule</dt>
-                    <dd className="text-right font-medium text-white">{plan}</dd>
+                    <dd className="text-right font-medium text-white">{planLabel}</dd>
                   </div>
                 </dl>
               </div>

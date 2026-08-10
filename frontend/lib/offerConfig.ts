@@ -76,6 +76,10 @@ export function mergePublicOfferConfig(
   }
 }
 
+export function capitalize(s: string): string {
+  return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1)
+}
+
 /** Libellé d’offre configuré en admin (« allure », « performance »…). */
 export function tierLabelFromConfig(
   cfg: OfferConfigPayload,
