@@ -16,21 +16,6 @@ import {
 } from "@/lib/webGpsRun";
 import pkg from "../package.json";
 
-/** Distances proposées en un clic ; la valeur alimente le champ km telle quelle. */
-const DISTANCE_PRESETS: { label: string; value: string }[] = [
-  { label: "5 km", value: "5" },
-  { label: "10 km", value: "10" },
-  { label: "Semi", value: "21.1" },
-  { label: "Marathon", value: "42.2" },
-];
-
-/** Chiffres et un seul séparateur décimal : évite « 10..5 » ou « 10,5,2 ». */
-function sanitizeTargetKm(raw: string): string {
-  const cleaned = raw.replace(/[^\d.,]/g, "").replace(",", ".");
-  const [head, ...rest] = cleaned.split(".");
-  return rest.length > 0 ? `${head}.${rest.join("").slice(0, 2)}` : head;
-}
-
 function haversineM(
   lat1: number,
   lon1: number,
@@ -294,9 +279,9 @@ export function LiveRunPanel({
   const netOnline = useNavigatorOnline();
   const fullscreenTargetRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<RunPhase>("setup");
-  const [targetKm, setTargetKm] = useState("10");
-  /** Champ libre ouvert : la distance n’est pas un des raccourcis proposés. */
-  const [customGoalOpen, setCustomGoalOpen] = useState(false);
+  /* Distance visée par défaut. Le sélecteur vivait dans la carte de préparation,
+     retirée de la page ; l'objectif reste utilisé par les calculs et la sauvegarde. */
+  const targetKm = "10";
   const [error, setError] = useState("");
 
   /** Temps en mouvement (pause auto), précision delta réel entre ticks. */
@@ -423,9 +408,6 @@ export function LiveRunPanel({
     /* Avant tout await : son + synthèse liés au tap (mobile / Safari). */
     playCourseStartChime();
     primeSpeechOnUserGesture();
-
-    const t = Math.max(0.5, parseFloat(targetKm.replace(",", ".")) || 10);
-    setTargetKm(String(t));
 
     if (!navigator.geolocation) {
       setError("La géolocalisation n’est pas disponible sur cet appareil.");
@@ -646,7 +628,7 @@ export function LiveRunPanel({
       },
       WEB_GPS_WATCH,
     );
-  }, [targetKm]);
+  }, []);
 
   const stopRun = useCallback(() => {
     const gpsStart = gpsStartTsMsRef.current;
@@ -718,7 +700,7 @@ export function LiveRunPanel({
         onRunSaved?.();
       })
       .catch(() => setServerSave("error"));
-  }, [cleanupWatch, targetKm, onRunSaved]);
+  }, [cleanupWatch, onRunSaved]);
 
   const resetRun = useCallback(() => {
     cleanupWatch();
@@ -743,6 +725,13 @@ export function LiveRunPanel({
   const showOfflineBanner =
     phase !== "running" && (apiUnreachableAtLoad || !netOnline);
 
+  /*
+   * Phase `setup` : la carte de préparation a été retirée de la page. Sans elle,
+   * il ne reste que l'avertissement hors ligne — s'il ne s'applique pas, le
+   * panneau n'a rien à afficher et ne doit pas occuper d'espace.
+   */
+  if (phase === "setup" && !showOfflineBanner) return null;
+
   return (
     <div
       className={
@@ -764,118 +753,6 @@ export function LiveRunPanel({
             Précision : pas de podomètre — distance = somme des segments GPS (haversine), avec plafond sur les trous
             d’échantillonnage Safari / iOS pour se rapprocher d’une app native. L’écran allumé et la page au premier plan
             restent recommandés.
-          </p>
-        </div>
-      ) : null}
-
-      {phase === "setup" ? (
-        <div className="app-hero p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="app-kicker">Nouvelle sortie</p>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-black/25 px-2.5 py-1 text-[10px] text-white/60">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              GPS · chrono · annonces
-            </span>
-          </div>
-
-          <div className="mt-5">
-            <p className="flex items-baseline gap-2">
-              <span className="font-display text-[3rem] font-bold leading-none tracking-tight text-white sm:text-[3.5rem]">
-                {targetKm.trim() === "" ? "—" : targetKm.replace(".", ",")}
-              </span>
-              <span className="font-display text-xl font-semibold text-brand-orange">km</span>
-            </p>
-            <p className="mt-2 text-[12px] leading-relaxed text-white/45">
-              Distance parcourue et reliquat mis en avant pendant la course.
-            </p>
-          </div>
-
-          {/* Raccourcis de distance, comme sur l’app : un tap suffit dans la plupart des cas. */}
-          <div className="-mx-1 member-scroll-x mt-4 flex gap-2 overflow-x-auto px-1 pb-1">
-            {DISTANCE_PRESETS.map((p) => {
-              const selected = !customGoalOpen && targetKm === p.value;
-              return (
-                <button
-                  key={p.value}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => {
-                    setTargetKm(p.value);
-                    setCustomGoalOpen(false);
-                  }}
-                  className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition ${
-                    selected
-                      ? "bg-white text-[#0d0f16]"
-                      : "border border-white/[0.12] bg-white/[0.05] text-white/65 hover:border-white/25 hover:text-white"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              aria-pressed={customGoalOpen}
-              onClick={() => setCustomGoalOpen(true)}
-              className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition ${
-                customGoalOpen
-                  ? "bg-white text-[#0d0f16]"
-                  : "border border-white/[0.12] bg-white/[0.05] text-white/65 hover:border-white/25 hover:text-white"
-              }`}
-            >
-              Perso
-            </button>
-          </div>
-
-          {customGoalOpen ? (
-            <label className="mt-3 flex items-center gap-2 rounded-xl border border-white/[0.12] bg-black/25 px-4 py-2.5">
-              <span className="sr-only">Distance visée en kilomètres</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                autoFocus
-                maxLength={8}
-                className="w-full min-w-0 flex-1 border-0 bg-transparent p-0 font-display text-xl font-semibold text-white outline-none placeholder:text-white/25"
-                value={targetKm}
-                onChange={(e) => setTargetKm(sanitizeTargetKm(e.target.value))}
-                placeholder="0"
-              />
-              <span className="shrink-0 text-sm text-white/45">km</span>
-            </label>
-          ) : null}
-
-          {error ? (
-            <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-100">
-              {error}
-            </p>
-          ) : null}
-
-          {/* Départ verrouillé sur le web : fonctionnalité annoncée comme à venir. */}
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title="Prochainement disponible"
-            className="mt-5 inline-flex min-h-[50px] w-full cursor-not-allowed items-center justify-center gap-2 rounded-[14px] border border-white/[0.1] bg-white/[0.05] px-5 py-3 text-[15px] font-medium text-white/40"
-          >
-            <svg
-              className="h-4 w-4 shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              aria-hidden
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
-              />
-            </svg>
-            Démarrer la course
-          </button>
-          <p className="mt-2 text-center text-[11px] leading-relaxed text-white/35">
-            Prochainement disponible.
           </p>
         </div>
       ) : null}

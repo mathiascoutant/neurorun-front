@@ -650,12 +650,22 @@ export type StravaPacePoint = {
   distance_km: number;
 };
 
+/** Agrégat d'une journée (UTC) — utilisé sur les périodes courtes. */
+export type StravaDashboardDay = {
+  date: string;
+  km: number;
+  hours: number;
+  avg_hr?: number;
+  runs: number;
+};
+
 export type StravaDashboard = {
   period: string;
   runs_total: number;
   total_km: number;
   total_hours: number;
   weekly: StravaDashboardWeek[];
+  daily: StravaDashboardDay[];
   pace_5k: StravaPacePoint[];
   pace_10k: StravaPacePoint[];
   pace_half: StravaPacePoint[];
@@ -670,6 +680,7 @@ function normalizeStravaDashboard(d: StravaDashboard): StravaDashboard {
     total_km: typeof d.total_km === "number" ? d.total_km : 0,
     total_hours: typeof d.total_hours === "number" ? d.total_hours : 0,
     weekly: asArray(d.weekly),
+    daily: asArray(d.daily),
     pace_5k: asArray(d.pace_5k),
     pace_10k: asArray(d.pace_10k),
     pace_half: asArray(d.pace_half),

@@ -1,15 +1,15 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { GoalsPanel } from '@/components/GoalsPanel'
-import { Mark } from '@/components/Mark'
-import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 import { MemberPageHeader } from '@/components/MemberPageHeader'
-import { NeuroRunSidebar, type AppSection } from '@/components/NeuroRunSidebar'
-import { SimplePlanBody } from '@/components/SimplePlanBody'
+import { MemberSidebar } from '@/components/MemberSidebar'
 import { StravaLinkBanner } from '@/components/StravaLinkBanner'
+import { ChatComposer } from '@/components/chat/ChatComposer'
+import { ChatMessage, CoachTyping } from '@/components/chat/ChatMessage'
+import { ChatWelcome } from '@/components/chat/ChatWelcome'
+import { ConversationList } from '@/components/chat/ConversationList'
 import {
   chat,
   createConversation,
@@ -25,23 +25,18 @@ import { saveMeCache } from '@/lib/meCache'
 
 type Msg = { role: 'user' | 'assistant'; text: string }
 
-/** Pastille du coach devant chaque réponse — même repère visuel que l’app. */
-function CoachAvatar() {
-  return (
-    <span
-      className="mt-0.5 flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-brand-orange/30 bg-brand-orange/[0.12] font-display text-[10px] font-bold tracking-wide text-brand-orange"
-      aria-hidden
-    >
-      NR
-    </span>
-  )
-}
+/** Section affichée sur cette route (le menu pointe ici avec `?section=goals`). */
+type AppSection = 'chat' | 'goals'
 
-const WELCOME: Msg = {
-  role: 'assistant',
-  text:
-    'NeuroRun : pose une question sur l’entraînement ou la course. Tu peux utiliser le coach sans Strava (conseils, structure, récup). Si tu associes Strava, il pourra aussi s’appuyer sur ton historique pour des repères plus précis. Tes messages sont enregistrés dans cette conversation. Réponses brèves, en français.',
-}
+/**
+ * Fil vide : plus de faux message d'accueil dans la conversation.
+ *
+ * Le texte de bienvenue était injecté comme une réponse du coach, ce qui le
+ * rendait indiscernable d'une vraie réponse et le laissait traîner en haut de
+ * chaque fil. Il est désormais porté par `ChatWelcome`, qui disparaît au premier
+ * échange.
+ */
+const EMPTY: Msg[] = []
 
 function coachSuggestions(stravaLinked: boolean): string[] {
   if (stravaLinked) {
@@ -66,7 +61,6 @@ function coachSuggestions(stravaLinked: boolean): string[] {
 
 function mapConvToMessages(conv: { messages?: { role: string; text: string | null }[] | null }): Msg[] {
   const raw = Array.isArray(conv.messages) ? conv.messages : []
-  if (raw.length === 0) return [WELCOME]
   return raw.map((m) => ({
     role: m.role === 'user' ? 'user' : 'assistant',
     text: m.text == null ? '' : String(m.text),
@@ -83,7 +77,7 @@ function ChatPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<Msg[]>([WELCOME])
+  const [messages, setMessages] = useState<Msg[]>(EMPTY)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const listEnd = useRef<HTMLDivElement>(null)
@@ -130,16 +124,16 @@ function ChatPageContent() {
             setMessages(mapConvToMessages(full))
           } catch {
             setActiveConversationId(null)
-            setMessages([WELCOME])
+            setMessages(EMPTY)
           }
         } else {
           setActiveConversationId(null)
-          setMessages([WELCOME])
+          setMessages(EMPTY)
         }
       } catch {
         setConversations([])
         setActiveConversationId(null)
-        setMessages([WELCOME])
+        setMessages(EMPTY)
       }
       setReady(true)
     })()
@@ -160,6 +154,10 @@ function ChatPageContent() {
   const showCoach = me?.capabilities?.coach_chat !== false
   const stravaOffer = me?.capabilities?.strava_dashboard !== false
   const effectiveSection: AppSection = section === 'goals' && !showGoals ? 'chat' : section
+  /* Titre du fil courant, en sous-titre d'en-tête : sur mobile la barre est fermée,
+     rien n'indiquait quelle conversation était ouverte. */
+  const activeTitle =
+    conversations.find((c) => c.id === activeConversationId)?.title?.trim() || undefined
 
   async function handleSelectConversation(id: string) {
     const token = getToken()
@@ -188,7 +186,7 @@ function ChatPageContent() {
     try {
       const conv = await createConversation(token)
       setActiveConversationId(conv.id)
-      setMessages([WELCOME])
+      setMessages(EMPTY)
       await refreshConversations()
     } catch {
       setMessages([
@@ -237,11 +235,11 @@ function ChatPageContent() {
           const full = await getConversation(token, top.id)
           setMessages(mapConvToMessages(full))
         } catch {
-          setMessages([WELCOME])
+          setMessages(EMPTY)
         }
       } else {
         setActiveConversationId(null)
-        setMessages([WELCOME])
+        setMessages(EMPTY)
       }
     }
     setLoading(false)
@@ -274,11 +272,6 @@ function ChatPageContent() {
     }
   }
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault()
-    send(input)
-  }
-
   function logout() {
     clearToken()
     router.push('/login/')
@@ -293,70 +286,48 @@ function ChatPageContent() {
   }
 
   /*
-   * Coach : coque à hauteur fixe sur TOUS les écrans. Le fil est le seul élément qui défile ;
-   * sans hauteur bornée il n’est pas un conteneur de défilement, et son `overscroll-contain`
-   * empêche alors le geste de remonter vers la page — plus rien ne défile sur mobile.
+   * Coque à hauteur fixe : le fil est le seul élément qui défile. Le composeur est
+   * un enfant normal de la colonne — l'ancienne version le positionnait en `fixed`
+   * avec un décalage `md:left-[280px]` écrit en dur, qui se désynchronisait de la
+   * largeur réelle de la barre et imposait une réserve de padding sous le fil.
    */
   return (
     <div className="member-app flex h-[100dvh] overflow-hidden">
-      {/* Desktop sidebar */}
-      <aside className="relative z-30 hidden w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
-        <div className="shrink-0 border-b border-white/[0.06] px-safe pt-safe pb-3">
-          <Mark compact />
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <NeuroRunSidebar
-          section={effectiveSection}
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-          onDeleteConversation={handleDeleteConversation}
-          suggestions={coachSuggestions(stravaLinked)}
-          onSuggestion={send}
-          disabled={loading}
-          capabilities={me.capabilities}
-          isAdmin={me.role === 'admin'}
-          profileFirstName={me.first_name}
-        />
-        </div>
-      </aside>
-
-      <MemberMobileDrawer
+      <MemberSidebar
+        active={effectiveSection === 'goals' ? 'goals' : 'coach'}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        headerLeading={
-          <Link
-            href="/dashboard/"
-            className="inline-flex"
-            onClick={() => setSidebarOpen(false)}
-            aria-label="NeuroRun — tableau de bord"
-          >
-            <Mark compact />
-          </Link>
+        capabilities={me.capabilities}
+        isAdmin={me.role === 'admin'}
+        firstName={me.first_name}
+        lastName={me.last_name}
+        secondary={
+          effectiveSection === 'chat' && showCoach
+            ? (onNavigate) => (
+                <ConversationList
+                  conversations={conversations}
+                  activeId={activeConversationId}
+                  onSelect={(id) => {
+                    void handleSelectConversation(id)
+                    onNavigate?.()
+                  }}
+                  onNew={() => {
+                    void handleNewConversation()
+                    onNavigate?.()
+                  }}
+                  onDelete={handleDeleteConversation}
+                  disabled={loading}
+                />
+              )
+            : undefined
         }
-      >
-        <NeuroRunSidebar
-          section={effectiveSection}
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-          onDeleteConversation={handleDeleteConversation}
-          suggestions={coachSuggestions(stravaLinked)}
-          onSuggestion={send}
-          disabled={loading}
-          onCloseMobile={() => setSidebarOpen(false)}
-          capabilities={me.capabilities}
-          isAdmin={me.role === 'admin'}
-          profileFirstName={me.first_name}
-        />
-      </MemberMobileDrawer>
+      />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {!stravaLinked && stravaOffer ? <StravaLinkBanner /> : null}
         <MemberPageHeader
           title={effectiveSection === 'chat' ? 'Coach' : 'Objectifs'}
+          subtitle={effectiveSection === 'chat' ? activeTitle : undefined}
           onMenuClick={() => setSidebarOpen((o) => !o)}
           menuOpen={sidebarOpen}
           onLogout={logout}
@@ -369,81 +340,51 @@ function ChatPageContent() {
           </div>
         ) : effectiveSection === 'chat' && !showCoach ? (
           <div className="flex flex-1 items-center justify-center px-safe">
-            <p className="max-w-md text-center text-sm text-white/55">
-              Le coach IA n&apos;est pas activé pour ton offre actuelle. Mets à niveau ton abonnement ou contacte un
-              administrateur.
-            </p>
+            <div className="app-card max-w-md p-6 text-center">
+              <span className="app-icon-tile mx-auto border-yellow-400/25 bg-yellow-400/[0.12] text-yellow-400">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                  />
+                </svg>
+              </span>
+              <h2 className="mt-3 font-display text-base font-semibold text-white/95">Coach IA non activé</h2>
+              <p className="mt-2 text-[14px] leading-relaxed text-white/55">
+                Il n’est pas inclus dans ton offre actuelle. Passe à une offre supérieure ou contacte un administrateur.
+              </p>
+            </div>
           </div>
         ) : effectiveSection === 'chat' ? (
           <>
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain">
-              <div className="chat-scroll-pad-b mx-auto w-full max-w-3xl flex-1 space-y-4 px-safe py-5 sm:py-6">
-                <div className="space-y-5">
-                  {messages.map((msg, i) =>
-                    msg.role === 'user' ? (
-                      <div
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+              <div className="mx-auto w-full max-w-3xl px-safe py-5 sm:py-6">
+                {messages.length === 0 && !loading ? (
+                  <ChatWelcome
+                    stravaLinked={stravaLinked}
+                    suggestions={coachSuggestions(stravaLinked)}
+                    onPick={send}
+                    disabled={loading}
+                  />
+                ) : (
+                  <div className="space-y-5">
+                    {messages.map((msg, i) => (
+                      <ChatMessage
                         key={`${msg.role}-${i}-${(msg.text ?? '').slice(0, 12)}`}
-                        className="flex animate-fade-up justify-end"
-                      >
-                        <div
-                          className="max-w-[min(100%,520px)] whitespace-pre-wrap rounded-[20px] rounded-br-md px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-insetline"
-                          style={{
-                            backgroundImage:
-                              'linear-gradient(135deg, #fc4c02 0%, #c73d00 100%)',
-                          }}
-                        >
-                          {msg.text ?? ''}
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        key={`${msg.role}-${i}-${(msg.text ?? '').slice(0, 12)}`}
-                        className="flex animate-fade-up items-start gap-2.5"
-                      >
-                        <CoachAvatar />
-                        <div className="min-w-0 max-w-[min(100%,560px)] rounded-[20px] rounded-tl-md border border-white/[0.08] bg-[#13161f] px-4 py-3">
-                          {/* Le coach répond en Markdown léger : sans rendu, HTML écrase les retours à la ligne. */}
-                          <SimplePlanBody
-                            text={msg.text ?? ''}
-                            className="[&_p]:text-[15px] [&_p]:text-white/90"
-                          />
-                        </div>
-                      </div>
-                    ),
-                  )}
-                  {loading ? (
-                    <div className="flex items-start gap-2.5">
-                      <CoachAvatar />
-                      <div
-                        className="flex items-center gap-1.5 rounded-[20px] rounded-tl-md border border-white/[0.08] bg-[#13161f] px-4 py-4"
-                        aria-live="polite"
-                        aria-label="Le coach réfléchit"
-                      >
-                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-orange [animation-delay:0ms]" />
-                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-orange [animation-delay:150ms]" />
-                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-orange [animation-delay:300ms]" />
-                      </div>
-                    </div>
-                  ) : null}
-                  <div ref={listEnd} />
-                </div>
+                        role={msg.role}
+                        text={msg.text}
+                      />
+                    ))}
+                    {loading ? <CoachTyping /> : null}
+                  </div>
+                )}
+                <div ref={listEnd} />
               </div>
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-white/[0.08] bg-surface-0/92 px-safe pb-safe pt-3 backdrop-blur-xl md:left-[280px]">
-              <form onSubmit={onSubmit} className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-stretch">
-                <input
-                  className="field min-h-11 w-full flex-1 border-white/[0.08] bg-surface-2/80 sm:min-h-12"
-                  placeholder="Ta question…"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  disabled={loading}
-                  autoComplete="off"
-                />
-                <button type="submit" className="btn-brand w-full shrink-0 px-6 sm:w-auto sm:self-stretch" disabled={loading || !input.trim()}>
-                  Envoyer
-                </button>
-              </form>
+            <div className="shrink-0 border-t border-white/[0.07] bg-surface-0/92 px-safe pb-safe pt-3 backdrop-blur-xl">
+              <ChatComposer value={input} onChange={setInput} onSend={send} disabled={loading} />
             </div>
           </>
         ) : null}

@@ -288,6 +288,10 @@
       max-width: 30rem;
     }
   }
+  .app-segment-item:focus-visible {
+    outline: 2px solid rgba(252, 76, 2, 0.65);
+    outline-offset: 2px;
+  }
   .app-segment-item {
     flex: 1 1 0%;
     min-width: 0;
@@ -423,6 +427,338 @@
     }
   }
 
+  /*
+   * ——— Navigation latérale ———
+   * Une seule ligne par entrée (pas de sous-titre) : la barre reste lisible d’un
+   * coup d’œil. L’état actif se lit sur trois canaux — rail orange, fond, couleur
+   * d’icône — pour ne pas dépendre de la couleur seule.
+   */
+  .nav-group {
+    margin-top: 18px;
+  }
+  .nav-group:first-child {
+    margin-top: 0;
+  }
+  .nav-group-label {
+    padding: 0 12px 6px;
+    font-family: var(--font-ibm), system-ui, sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.3);
+  }
+  .nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-height: 42px;
+    padding: 0 10px 0 12px;
+    border-radius: 12px;
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.6);
+    transition:
+      background-color 0.18s ease,
+      color 0.18s ease;
+  }
+  .nav-item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.94);
+  }
+  .nav-item:focus-visible {
+    outline: 2px solid rgba(252, 76, 2, 0.65);
+    outline-offset: 2px;
+  }
+  .nav-item-icon {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    color: rgba(255, 255, 255, 0.42);
+    transition: color 0.18s ease;
+  }
+  .nav-item:hover .nav-item-icon {
+    color: rgba(255, 255, 255, 0.72);
+  }
+  .nav-item--on {
+    color: #fff;
+    background-image: linear-gradient(90deg, rgba(252, 76, 2, 0.17) 0%, rgba(252, 76, 2, 0.04) 100%);
+  }
+  .nav-item--on::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    height: 18px;
+    width: 3px;
+    transform: translateY(-50%);
+    border-radius: 0 3px 3px 0;
+    background-color: #fc4c02;
+  }
+  .nav-item--on .nav-item-icon,
+  .nav-item--on:hover .nav-item-icon {
+    color: #fc4c02;
+  }
+  /* Entrée admin : ton glace pour la distinguer du parcours utilisateur. */
+  .nav-item--admin .nav-item-icon {
+    color: rgba(103, 232, 249, 0.62);
+  }
+  .nav-item--admin:hover .nav-item-icon {
+    color: #67e8f9;
+  }
+  .nav-item--admin.nav-item--on {
+    background-image: linear-gradient(90deg, rgba(103, 232, 249, 0.14) 0%, rgba(103, 232, 249, 0.03) 100%);
+  }
+  .nav-item--admin.nav-item--on::before {
+    background-color: #67e8f9;
+  }
+  .nav-item--admin.nav-item--on .nav-item-icon {
+    color: #67e8f9;
+  }
+
+  /* Carte compte, en pied de barre latérale. */
+  .nav-account {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background-color: rgba(255, 255, 255, 0.03);
+    padding: 9px 10px;
+    transition:
+      background-color 0.18s ease,
+      border-color 0.18s ease;
+  }
+  .nav-account:hover {
+    border-color: rgba(255, 255, 255, 0.14);
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+  .nav-account:focus-visible {
+    outline: 2px solid rgba(252, 76, 2, 0.65);
+    outline-offset: 2px;
+  }
+  .nav-account--on {
+    border-color: rgba(252, 76, 2, 0.3);
+    background-color: rgba(252, 76, 2, 0.09);
+  }
+  .nav-avatar {
+    display: inline-flex;
+    height: 34px;
+    width: 34px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 11px;
+    background-image: linear-gradient(140deg, rgba(252, 76, 2, 0.9) 0%, rgba(199, 61, 0, 0.85) 100%);
+    font-family: var(--font-sora), system-ui, sans-serif;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #fff;
+  }
+
+  /*
+   * ——— Tuiles de statistique ———
+   * Chiffres en chasse tabulaire : les valeurs ne « sautent » plus d’un
+   * rafraîchissement à l’autre.
+   */
+  .stat-tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background-color: #0d0f16;
+    padding: 15px 16px 16px;
+  }
+  .stat-tile--accent {
+    border-color: rgba(252, 76, 2, 0.24);
+    background-image: linear-gradient(150deg, rgba(252, 76, 2, 0.17) 0%, rgba(252, 76, 2, 0.035) 48%, rgba(13, 15, 22, 0) 100%);
+  }
+  .stat-label {
+    font-family: var(--font-ibm), system-ui, sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.44);
+  }
+  .stat-value {
+    font-family: var(--font-sora), system-ui, sans-serif;
+    font-size: 30px;
+    line-height: 34px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+  }
+  @media (min-width: 1280px) {
+    .stat-value {
+      font-size: 33px;
+      line-height: 37px;
+    }
+  }
+  .stat-unit {
+    font-family: var(--font-sora), system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: rgba(255, 255, 255, 0.42);
+  }
+  .stat-hint {
+    font-size: 12px;
+    line-height: 16px;
+    color: rgba(255, 255, 255, 0.44);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Écart vs période précédente — la flèche porte le sens, pas seulement la couleur. */
+  .stat-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background-color: rgba(255, 255, 255, 0.05);
+    padding: 3px 8px 3px 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 14px;
+    color: rgba(255, 255, 255, 0.72);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * ——— Cartes graphiques ———
+   * Même conteneur pour tous les graphiques : titre, aide, actions, puis le tracé.
+   */
+  .chart-card {
+    display: flex;
+    flex-direction: column;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background-color: #0d0f16;
+  }
+  .chart-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 16px 16px 0;
+  }
+  @media (min-width: 640px) {
+    .chart-card-head {
+      padding: 18px 20px 0;
+    }
+  }
+  .chart-card-title {
+    font-family: var(--font-sora), system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #fff;
+  }
+  .chart-card-sub {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 17px;
+    color: rgba(255, 255, 255, 0.42);
+  }
+  .chart-card-body {
+    padding: 14px 8px 14px 4px;
+  }
+  @media (min-width: 640px) {
+    .chart-card-body {
+      padding: 16px 14px 16px 6px;
+    }
+  }
+  /* Puce de légende : cliquable pour isoler/masquer une série. */
+  .chart-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background-color: rgba(255, 255, 255, 0.04);
+    padding: 5px 11px 5px 9px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 15px;
+    color: rgba(255, 255, 255, 0.75);
+    transition:
+      background-color 0.18s ease,
+      border-color 0.18s ease,
+      opacity 0.18s ease;
+  }
+  .chart-chip:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    background-color: rgba(255, 255, 255, 0.07);
+  }
+  .chart-chip:focus-visible {
+    outline: 2px solid rgba(252, 76, 2, 0.65);
+    outline-offset: 2px;
+  }
+  .chart-chip--off {
+    opacity: 0.42;
+    color: rgba(255, 255, 255, 0.5);
+  }
+  .chart-chip-dot {
+    height: 9px;
+    width: 9px;
+    flex: none;
+    border-radius: 3px;
+  }
+  .chart-chip--off .chart-chip-dot {
+    background-color: transparent !important;
+    box-shadow: inset 0 0 0 1.5px currentColor;
+  }
+
+  /* Infobulle des graphiques (rendu par Recharts, hors arbre Tailwind). */
+  .chart-tip {
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: rgba(18, 21, 31, 0.97);
+    padding: 9px 11px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Tableau de secours sous un graphique (lecture au clavier / lecteur d’écran). */
+  .chart-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .chart-table th,
+  .chart-table td {
+    padding: 7px 10px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .chart-table th:first-child,
+  .chart-table td:first-child {
+    text-align: left;
+  }
+  .chart-table thead th {
+    position: sticky;
+    top: 0;
+    background-color: #0d0f16;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.42);
+  }
+  .chart-table tbody td {
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.78);
+  }
 }
 
 /* Zones sûres (encoches, barre d’accueil) — viewportFit: cover dans layout */
@@ -436,18 +772,6 @@
   }
   .pb-safe {
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
-  }
-  /*
-   * Coach : le composeur est en position fixe au-dessus du fil. Sans cette réserve,
-   * le dernier message passe dessous. Mobile = champ + bouton empilés, donc plus haut.
-   */
-  .chat-scroll-pad-b {
-    padding-bottom: calc(10rem + env(safe-area-inset-bottom, 0px));
-  }
-  @media (min-width: 640px) {
-    .chat-scroll-pad-b {
-      padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
-    }
   }
   .member-scroll-x {
     -webkit-overflow-scrolling: touch;

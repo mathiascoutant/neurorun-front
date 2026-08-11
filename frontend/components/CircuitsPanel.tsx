@@ -7,15 +7,12 @@ import { createPortal } from 'react-dom'
 import { fetchWalkingRouteDisplay, type RoutedDisplay } from '@/lib/osrmRouting'
 import { CircuitRunPanel } from '@/components/CircuitRunPanel'
 import { Mark } from '@/components/Mark'
-import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 import { MemberPageHeader } from '@/components/MemberPageHeader'
-import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
+import { MemberSidebar } from '@/components/MemberSidebar'
 import {
   CircuitListCard,
-  DetailInfoCard,
-  InfoRow,
+  CircuitStats,
   LeaderboardCard,
-  fmtCircuitLength,
 } from '@/components/circuit/CircuitPieces'
 import {
   ApiError,
@@ -548,41 +545,15 @@ export function CircuitsPanel() {
 
   return (
     <div className="member-app flex min-h-[100dvh] overflow-x-hidden md:h-[100dvh] md:min-h-0 md:overflow-hidden">
-      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:max-h-[100dvh] md:h-screen">
-        <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
-          <Link href="/dashboard/" aria-label="NeuroRun">
-            <Mark compact />
-          </Link>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
-          <MemberPrimaryNav
-            active="circuit"
-            capabilities={me.capabilities}
-            isAdmin={me.role === 'admin'}
-            profileFirstName={me.first_name}
-          />
-        </div>
-      </aside>
-
-      <MemberMobileDrawer
+      <MemberSidebar
+        active="circuit"
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        headerLeading={
-          <Link href="/dashboard/" onClick={() => setSidebarOpen(false)} className="inline-flex" aria-label="NeuroRun">
-            <Mark compact />
-          </Link>
-        }
-      >
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
-          <MemberPrimaryNav
-            active="circuit"
-            onNavigate={() => setSidebarOpen(false)}
-            capabilities={me.capabilities}
-            isAdmin={me.role === 'admin'}
-            profileFirstName={me.first_name}
-          />
-        </div>
-      </MemberMobileDrawer>
+        capabilities={me.capabilities}
+        isAdmin={me.role === 'admin'}
+        firstName={me.first_name}
+        lastName={me.last_name}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden md:h-[100dvh] md:overflow-y-auto">
         <MemberPageHeader
@@ -661,52 +632,72 @@ export function CircuitsPanel() {
           {mode === 'explore' ? (
             <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
               <div className="min-w-0 space-y-3">
-                {/* Hauteur fixe : le titre de droite reste sur la même ligne de base. */}
-                <div className="flex h-[52px] flex-col justify-start">
-                  <h2 className="font-display text-[19px] font-semibold leading-tight text-white">
-                    Autour de toi
-                  </h2>
-                  <p className="mt-1 text-[13px] leading-snug text-white/38">
-                    Choisis un rayon, puis un parcours pour voir son détail.
-                  </p>
-                </div>
-
-                <div className="member-scroll-x -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-                  {RADIUS_KM_OPTIONS.map((km) => {
-                    const sel = radiusKm === km
-                    return (
-                      <button
-                        key={km}
-                        type="button"
-                        aria-pressed={sel}
-                        onClick={() => setRadiusKm(km)}
-                        className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[15px] transition ${
-                          sel
-                            ? 'border-brand-orange bg-brand-orange/15 font-medium text-brand-orange'
-                            : 'border-white/[0.08] bg-white/[0.06] text-white/60 hover:border-white/20 hover:text-white/85'
-                        }`}
-                      >
-                        {km} km
-                      </button>
-                    )
-                  })}
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div className="min-w-0">
+                    <h2 className="font-display text-[17px] font-semibold tracking-[-0.01em] text-white">
+                      Autour de toi
+                    </h2>
+                    <p className="mt-1 text-[12px] leading-snug text-white/42">
+                      Choisis un rayon, puis un parcours pour voir son détail.
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    className="btn-quiet shrink-0 px-3.5 text-[13px]"
-                    style={{ minHeight: 0, paddingTop: 6, paddingBottom: 6 }}
                     onClick={() => void refreshNearby()}
                     disabled={loadingNear || !pos}
+                    className="chart-chip shrink-0 cursor-pointer disabled:opacity-40"
                   >
-                    {loadingNear ? '…' : 'Actualiser'}
+                    <svg
+                      className={`h-3.5 w-3.5 ${loadingNear ? 'animate-spin' : ''}`}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                      aria-hidden
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356M3.03 14.652h4.992v4.992M4.03 9.349a8.25 8.25 0 0113.803-3.03l3.182 3.03m-16.985 5.303l3.182 3.03a8.25 8.25 0 0013.803-3.03" />
+                    </svg>
+                    Actualiser
                   </button>
                 </div>
 
-                {nearby.length === 0 && !loadingNear ? (
-                  <p className="py-8 text-center text-[15px] text-white/38">
-                    Aucun parcours dans ce rayon.
-                  </p>
+                {/* Rayon de recherche — même contrôle segmenté que le reste de l’app. */}
+                <div className="member-scroll-x -mx-1 overflow-x-auto px-1 pb-1">
+                  <div className="app-segment min-w-[19rem]" role="group" aria-label="Rayon de recherche">
+                    {RADIUS_KM_OPTIONS.map((km) => (
+                      <button
+                        key={km}
+                        type="button"
+                        aria-pressed={radiusKm === km}
+                        onClick={() => setRadiusKm(km)}
+                        className={`app-segment-item cursor-pointer ${radiusKm === km ? 'app-segment-item--on' : ''}`}
+                      >
+                        {km} km
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {loadingNear && nearby.length === 0 ? (
+                  <div className="space-y-2.5" aria-busy="true">
+                    <div className="app-skeleton h-[86px]" />
+                    <div className="app-skeleton h-[86px]" />
+                  </div>
+                ) : nearby.length === 0 ? (
+                  <div className="app-empty">
+                    <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.04] text-white/38">
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                      </svg>
+                    </span>
+                    <p className="text-[15px] font-semibold text-white/90">Aucun parcours dans ce rayon</p>
+                    <p className="mx-auto mt-1.5 max-w-[300px] text-[13px] leading-[19px] text-white/40">
+                      Élargis la recherche, ou crée le premier parcours du coin depuis l’onglet « Créer ».
+                    </p>
+                  </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {nearby.map((c) => {
                       const startPt = c.points[c.start_index] ?? c.points[0] ?? null
                       return (
@@ -726,55 +717,57 @@ export function CircuitsPanel() {
               </div>
 
               <div className="min-w-0 space-y-3 lg:sticky lg:top-4">
-                <div className="flex h-[52px] flex-col justify-start">
-                  <h2 className="font-display text-[19px] font-semibold leading-tight text-white">
+                <div className="min-w-0">
+                  <h2 className="font-display text-[17px] font-semibold tracking-[-0.01em] text-white">
                     Détail du parcours
                   </h2>
-                  <p className="mt-1 text-[13px] leading-snug text-white/38">
+                  <p className="mt-1 text-[12px] leading-snug text-white/42">
                     Statistiques, classement et lancement du chrono.
                   </p>
                 </div>
                 {!selected ? (
                   <div className="app-empty">
-                    <p className="text-base font-semibold text-white/92">Aucun parcours sélectionné</p>
-                    <p className="mx-auto mt-1.5 max-w-[280px] text-[13px] leading-[19px] text-white/38">
-                      Choisis un parcours dans la liste ou sur la carte pour voir son détail.
+                    <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.04] text-white/38">
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z" />
+                      </svg>
+                    </span>
+                    <p className="text-[15px] font-semibold text-white/90">Aucun parcours sélectionné</p>
+                    <p className="mx-auto mt-1.5 max-w-[300px] text-[13px] leading-[19px] text-white/40">
+                      Choisis un parcours dans la liste ou touche un marqueur sur la carte.
                     </p>
                   </div>
                 ) : detailLoading ? (
                   <div className="app-skeleton h-[288px]" />
                 ) : detail ? (
                   <>
-                    <DetailInfoCard title="À propos de ce parcours">
-                      <InfoRow
-                        label="Créé par"
-                        value={
-                          detail.circuit.creator_display_name?.trim() ||
-                          (detail.circuit.created_by ? 'Membre NeuroRun' : '—')
-                        }
-                      />
-                      <InfoRow
-                        label="Distance totale"
-                        value={fmtCircuitLength(
+                    <div className="rounded-[20px] border border-white/[0.07] bg-white/[0.015] p-3.5">
+                      <div className="mb-3 flex items-baseline justify-between gap-3 px-0.5">
+                        <h3 className="min-w-0 truncate font-display text-[16px] font-semibold text-white">
+                          {detail.circuit.name}
+                        </h3>
+                        <p className="shrink-0 text-[11.5px] text-white/35">
+                          par{' '}
+                          {detail.circuit.creator_display_name?.trim() ||
+                            (detail.circuit.created_by ? 'un membre' : '—')}
+                        </p>
+                      </div>
+                      <CircuitStats
+                        lengthM={
                           detail.circuit.length_m ??
-                            pathLengthMeters(
-                              orderedPathPoints(detail.circuit.points, detail.circuit.start_index),
-                            ),
-                        )}
-                      />
-                      <InfoRow
-                        label="Record"
-                        value={
+                          pathLengthMeters(
+                            orderedPathPoints(detail.circuit.points, detail.circuit.start_index),
+                          )
+                        }
+                        participants={detail.participant_count}
+                        completions={detail.completion_count_total}
+                        record={
                           detail.top_times.length > 0
-                            ? `${formatDurationMs(detail.top_times[0].duration_ms)} · ${
-                                detail.top_times[0].display_name || 'Anonyme'
-                              }`
-                            : 'Pas encore de temps'
+                            ? formatDurationMs(detail.top_times[0].duration_ms)
+                            : null
                         }
                       />
-                      <InfoRow label="Participants" value={detail.participant_count} />
-                      <InfoRow label="Complétions" value={detail.completion_count_total} />
-                    </DetailInfoCard>
+                    </div>
 
                     {detail.top_times.length > 0 ? (
                       <LeaderboardCard
@@ -824,33 +817,44 @@ export function CircuitsPanel() {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <p className="text-center text-[13px] leading-relaxed text-white/60">
-                Touche la carte pour placer tes points <strong className="font-medium text-white/85">dans l’ordre</strong>.
-                Le tracé reste ouvert (pas de ligne entre le dernier et le premier point) ; le départ a un contour vert.
-              </p>
-
-              {/* Récapitulatif du tracé en cours, comme le bloc de stats de l’app. */}
-              <div className="rounded-2xl border border-white/[0.12] bg-white/[0.04] px-4 py-3 text-center">
-                <p className="text-[15px] font-medium text-white/92">
-                  {createPoints.length} point{createPoints.length !== 1 ? 's' : ''} placé
-                  {createPoints.length !== 1 ? 's' : ''}
-                </p>
-                {createPoints.length >= 2 ? (
-                  <p className="mt-1 text-[13px] text-white/60">
-                    Longueur du tracé :{' '}
-                    <strong className="font-semibold text-brand-ice">
-                      {formatDistanceM(pathLengthMeters(createPoints))}
-                    </strong>
-                  </p>
-                ) : createPoints.length === 1 ? (
-                  <p className="mt-1 text-[13px] text-white/38">
-                    Ajoute un 2ᵉ point pour tracer la ligne et afficher la distance.
-                  </p>
-                ) : null}
+            <div className="mx-auto w-full max-w-2xl space-y-4">
+              <div className="app-note">
+                <span className="mt-px shrink-0 text-brand-ice">
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25h1.5v5.25m-.75-9h.008v.008H12V7.5zM21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </span>
+                <span>
+                  Touche la carte pour placer tes points <strong>dans l’ordre</strong>. Le tracé reste ouvert — aucune
+                  ligne entre le dernier et le premier point — et le départ porte un contour vert.
+                </span>
               </div>
 
-              <div className="rounded-[20px] border border-white/[0.08] bg-[#0d0f16] p-4">
+              {/* Progression du tracé : ce qui est posé, et ce que ça mesure. */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-2xl border border-white/[0.07] bg-[#0d0f16] px-3.5 py-3">
+                  <p className="text-[9.5px] uppercase tracking-[0.13em] text-white/28">Points placés</p>
+                  <p className="mt-1.5 font-display text-[19px] font-semibold leading-none tabular-nums text-white/92">
+                    {createPoints.length}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/[0.07] bg-[#0d0f16] px-3.5 py-3">
+                  <p className="text-[9.5px] uppercase tracking-[0.13em] text-white/28">Longueur</p>
+                  <p className="mt-1.5 font-display text-[19px] font-semibold leading-none tabular-nums text-white/92">
+                    {createPoints.length >= 2 ? formatDistanceM(pathLengthMeters(createPoints)) : '—'}
+                  </p>
+                </div>
+              </div>
+
+              {createPoints.length < 2 ? (
+                <p className="px-1 text-[12px] text-white/35">
+                  {createPoints.length === 0
+                    ? 'Place un premier point sur la carte pour démarrer le tracé.'
+                    : 'Ajoute un 2ᵉ point pour tracer la ligne et calculer la distance.'}
+                </p>
+              ) : null}
+
+              <div className="rounded-[20px] border border-white/[0.07] bg-[#0d0f16] p-4">
                 <div className="flex flex-wrap gap-3">
                   <label className="block min-w-[200px] flex-1">
                     <span className="text-[13px] text-white/60">Nom du parcours</span>

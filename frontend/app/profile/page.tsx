@@ -6,10 +6,8 @@ import { FormEvent, useEffect, useId, useState } from 'react'
 import { BillingPanel } from '@/components/BillingPanel'
 import { GenderSelect } from '@/components/auth/GenderSelect'
 import { GradientText } from '@/components/GradientText'
-import { Mark } from '@/components/Mark'
-import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 import { MemberPageHeader } from '@/components/MemberPageHeader'
-import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
+import { MemberSidebar } from '@/components/MemberSidebar'
 import { StravaLinkBanner } from '@/components/StravaLinkBanner'
 import {
   deleteMyAccount,
@@ -238,46 +236,15 @@ export default function ProfilePage() {
 
   return (
     <div className="member-app flex min-h-[100dvh] overflow-x-hidden md:h-[100dvh] md:min-h-0 md:overflow-hidden">
-      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
-        <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
-          <Link href="/dashboard/" aria-label="NeuroRun">
-            <Mark compact />
-          </Link>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
-          <MemberPrimaryNav
-            active="profile"
-            capabilities={me.capabilities}
-            isAdmin={me.role === 'admin'}
-            profileFirstName={me.first_name}
-          />
-        </div>
-      </aside>
-
-      <MemberMobileDrawer
+      <MemberSidebar
+        active="profile"
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        headerLeading={
-          <Link
-            href="/dashboard/"
-            onClick={() => setSidebarOpen(false)}
-            className="inline-flex"
-            aria-label="NeuroRun — tableau de bord"
-          >
-            <Mark compact />
-          </Link>
-        }
-      >
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
-          <MemberPrimaryNav
-            active="profile"
-            onNavigate={() => setSidebarOpen(false)}
-            capabilities={me.capabilities}
-            isAdmin={me.role === 'admin'}
-            profileFirstName={me.first_name}
-          />
-        </div>
-      </MemberMobileDrawer>
+        capabilities={me.capabilities}
+        isAdmin={me.role === 'admin'}
+        firstName={me.first_name}
+        lastName={me.last_name}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden md:h-[100dvh] md:overflow-y-auto">
         {!me.strava_linked && stravaOffer ? <StravaLinkBanner /> : null}
@@ -286,28 +253,64 @@ export default function ProfilePage() {
           onMenuClick={() => setSidebarOpen((o) => !o)}
           menuOpen={sidebarOpen}
           onLogout={logout}
-          maxWidthClass="mx-auto w-full max-w-xl"
+          maxWidthClass="mx-auto w-full max-w-3xl"
         />
 
-        <main className="member-main-pad-b mx-auto w-full max-w-xl flex-1 space-y-6 px-safe py-6 sm:py-8">
-          {/* Héro d’identité — avatar dégradé, nom, email, ancienneté (comme l’app) */}
+        <main className="member-main-pad-b mx-auto w-full max-w-3xl flex-1 space-y-5 px-safe py-6 sm:py-8">
+          {/*
+            Identité : avatar, nom, email, puis les faits du compte en puces —
+            ancienneté, offre, état Strava. Ces trois informations vivaient
+            auparavant dans trois blocs séparés, dont deux répétaient l’email.
+          */}
           <section className="overflow-hidden rounded-[20px] border border-white/[0.08] bg-gradient-to-br from-[#13161f] to-[#0d0f16] p-5">
             <div className="flex items-center gap-4">
               <span
-                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full font-display text-xl font-bold tracking-wide text-white"
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl font-display text-lg font-bold tracking-wide text-white sm:h-16 sm:w-16 sm:text-xl"
                 style={{ backgroundImage: 'linear-gradient(135deg, #fc4c02 0%, #c73d00 100%)' }}
               >
                 {userInitials(me.first_name, me.last_name)}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="font-display text-xl font-semibold leading-tight text-white">
+                <p className="truncate font-display text-xl font-bold tracking-[-0.02em] text-white sm:text-[1.4rem]">
                   {[me.first_name, me.last_name].filter(Boolean).join(' ') || 'Runner'}
                 </p>
-                <p className="mt-1 truncate text-sm text-white/45">{me.email}</p>
+                <p className="mt-1 truncate text-[13.5px] text-white/45">{me.email}</p>
               </div>
             </div>
-            <div className="mt-4 border-t border-white/[0.08] pt-3">
-              <p className="text-[13px] text-white/38">Membre depuis {memberSince(me.created_at)}</p>
+
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-white/[0.08] pt-4">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11.5px] text-white/50">
+                <svg className="h-3.5 w-3.5 text-white/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                </svg>
+                Membre depuis {memberSince(me.created_at)}
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium ${
+                  me.plan === 'performance'
+                    ? 'border-brand-orange/30 bg-brand-orange/[0.1] text-brand-orange'
+                    : me.plan === 'strava'
+                      ? 'border-brand-ice/30 bg-brand-ice/[0.08] text-brand-ice'
+                      : 'border-white/[0.08] bg-white/[0.04] text-white/55'
+                }`}
+              >
+                Offre {planTitle}
+              </span>
+              {stravaOffer ? (
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] ${
+                    me.strava_linked
+                      ? 'border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-300/90'
+                      : 'border-white/[0.08] bg-white/[0.04] text-white/45'
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className={`h-1.5 w-1.5 rounded-full ${me.strava_linked ? 'bg-emerald-400' : 'bg-white/30'}`}
+                  />
+                  Strava {me.strava_linked ? 'connecté' : 'non connecté'}
+                </span>
+              ) : null}
             </div>
           </section>
 
@@ -348,168 +351,218 @@ export default function ProfilePage() {
                 ) : null}
               </div>
             ) : null}
-            <p className="mt-4 text-[11px] text-white/35">
-              Email de connexion :{' '}
-              <span className="text-white/55">{me.email}</span> — non modifiable ici.{' '}
-              <Link href="/" className="text-brand-ice/85 underline decoration-white/15 underline-offset-2 hover:text-white">
-                Page d&apos;accueil
-              </Link>
-            </p>
           </section>
 
           <BillingPanel onPlanChange={refreshMe} />
 
-          {stravaOffer ? (
-            <section className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-sm text-white/55">
-              {me.strava_linked ? (
-                <span>
-                  <span className="font-medium text-white/75">Strava</span> est associé à ce compte. Pour changer de
-                  compte Strava, contacte le support ou revois la doc OAuth dans les paramètres Strava.
-                </span>
-              ) : (
-                <span>
-                  <Link href="/link-strava/" className="text-brand-ice/90 underline decoration-white/15 underline-offset-2">
-                    Associer Strava
-                  </Link>{' '}
-                  pour les tableaux et le coach contextuel.
-                </span>
-              )}
+          {stravaOffer && !me.strava_linked ? (
+            <section className="flex flex-wrap items-center gap-4 rounded-[20px] border border-brand-ice/20 bg-brand-ice/[0.04] p-4">
+              <span className="app-icon-tile border-brand-ice/25 bg-brand-ice/[0.12] text-brand-ice">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
+                  />
+                </svg>
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-semibold text-white/92">Associer Strava</p>
+                <p className="mt-0.5 text-[12.5px] leading-snug text-white/45">
+                  Débloque les tableaux de bord et un coach qui s’appuie sur tes sorties.
+                </p>
+              </div>
+              <Link href="/link-strava/" className="btn-brand shrink-0 cursor-pointer px-4 py-2.5 text-sm">
+                Associer
+              </Link>
             </section>
           ) : null}
 
-          <form onSubmit={onSave} className="panel space-y-4 p-5 sm:p-6">
-            <h2 className="font-display text-sm font-semibold text-white">Informations personnelles</h2>
+          <form onSubmit={onSave} className="space-y-5">
             {saveMsg ? (
-              <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+              <p
+                role="status"
+                className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-[13.5px] text-emerald-100"
+              >
+                <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
                 {saveMsg}
               </p>
             ) : null}
             {saveErr ? (
-              <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+              <p
+                role="alert"
+                className="flex items-center gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-[13.5px] text-red-100"
+              >
+                <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 {saveErr}
               </p>
             ) : null}
 
-            <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-white/40">Prénom</span>
-              <input
-                className="field mt-2 border-white/[0.08] bg-surface-2/80"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                autoComplete="given-name"
-              />
-            </label>
-            <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-white/40">Nom</span>
-              <input
-                className="field mt-2 border-white/[0.08] bg-surface-2/80"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                autoComplete="family-name"
-              />
-            </label>
-            <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-white/40">Date de naissance</span>
-              <input
-                type="date"
-                className="field mt-2 border-white/[0.08] bg-surface-2/80"
-                value={birthDate}
-                max={birthMax}
-                onChange={(e) => setBirthDate(e.target.value)}
-              />
-            </label>
-            <div>
-              <p id={genderLabelId} className="text-[10px] font-medium uppercase tracking-wider text-white/40">
-                Sexe (optionnel)
+            <section className="rounded-[20px] border border-white/[0.07] bg-[#0d0f16] p-5">
+              <h2 className="font-display text-[15px] font-semibold text-white">Informations personnelles</h2>
+              <p className="mt-1 text-[12.5px] text-white/42">
+                Ton prénom sert au coach et à l’affichage dans les classements.
               </p>
-              <div className="mt-2">
-                <GenderSelect id={genderControlId} value={gender} onChange={setGender} aria-labelledby={genderLabelId} />
-              </div>
-            </div>
 
-            <div className="border-t border-white/[0.06] pt-4">
-              <h3 className="text-xs font-semibold text-white/80">Changer le mot de passe</h3>
-              <p className="mt-1 text-[11px] text-white/40">Laisse vide pour ne pas modifier.</p>
-              <label className="mt-3 block">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-white/40">
-                  Mot de passe actuel
-                </span>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-[12.5px] font-medium text-white/60">Prénom</span>
+                  <input
+                    className="field mt-1.5 border-white/[0.08] bg-surface-2/80"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    autoComplete="given-name"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[12.5px] font-medium text-white/60">Nom</span>
+                  <input
+                    className="field mt-1.5 border-white/[0.08] bg-surface-2/80"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    autoComplete="family-name"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[12.5px] font-medium text-white/60">Date de naissance</span>
+                  <input
+                    type="date"
+                    className="field mt-1.5 border-white/[0.08] bg-surface-2/80"
+                    value={birthDate}
+                    max={birthMax}
+                    onChange={(e) => setBirthDate(e.target.value)}
+                  />
+                  <span className="mt-1.5 block text-[11.5px] text-white/32">
+                    Sert à estimer tes zones cardiaques.
+                  </span>
+                </label>
+                <div>
+                  <p id={genderLabelId} className="text-[12.5px] font-medium text-white/60">
+                    Sexe <span className="text-white/32">(optionnel)</span>
+                  </p>
+                  <div className="mt-1.5">
+                    <GenderSelect
+                      id={genderControlId}
+                      value={gender}
+                      onChange={setGender}
+                      aria-labelledby={genderLabelId}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[20px] border border-white/[0.07] bg-[#0d0f16] p-5">
+              <h2 className="font-display text-[15px] font-semibold text-white">Mot de passe</h2>
+              <p className="mt-1 text-[12.5px] text-white/42">
+                Laisse ces trois champs vides pour conserver ton mot de passe actuel.
+              </p>
+
+              <div className="mt-4 space-y-4">
+                <label className="block">
+                  <span className="text-[12.5px] font-medium text-white/60">Mot de passe actuel</span>
+                  <input
+                    type="password"
+                    className="field mt-1.5 border-white/[0.08] bg-surface-2/80"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    autoComplete="current-password"
+                  />
+                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-[12.5px] font-medium text-white/60">Nouveau mot de passe</span>
+                    <input
+                      type="password"
+                      className="field mt-1.5 border-white/[0.08] bg-surface-2/80"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                    <span className="mt-1.5 block text-[11.5px] text-white/32">8 caractères minimum.</span>
+                  </label>
+                  <label className="block">
+                    <span className="text-[12.5px] font-medium text-white/60">Confirmer le nouveau</span>
+                    <input
+                      type="password"
+                      className="field mt-1.5 border-white/[0.08] bg-surface-2/80"
+                      value={newPassword2}
+                      onChange={(e) => setNewPassword2(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </label>
+                </div>
+              </div>
+            </section>
+
+            <div className="flex justify-end">
+              <button type="submit" className="btn-brand w-full cursor-pointer sm:w-auto sm:px-8" disabled={saving}>
+                {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
+              </button>
+            </div>
+          </form>
+
+          {/*
+            Repliée par défaut : une action irréversible n'a pas à occuper le bas
+            de l'écran à chaque visite. Il faut un geste délibéré pour l'ouvrir,
+            puis le mot de passe, puis une confirmation — trois barrières.
+          */}
+          <details className="group rounded-[20px] border border-white/[0.07] bg-white/[0.015] open:border-red-500/25 open:bg-red-500/[0.04]">
+            <summary className="flex cursor-pointer list-none items-center gap-2.5 p-4 text-[13.5px] font-medium text-white/45 transition hover:text-white/75">
+              <svg
+                className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-90"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              Supprimer mon compte
+            </summary>
+
+            <div className="border-t border-red-500/15 p-5">
+              <p className="text-[13.5px] leading-relaxed text-red-100/75">
+                Tout est effacé : conversations avec le coach, objectifs et plans, historique des courses, et la liaison
+                Strava côté serveur. <strong className="font-semibold text-red-100/95">C’est irréversible.</strong>
+              </p>
+              {me.plan !== 'standard' ? (
+                <p className="mt-2.5 text-[13.5px] leading-relaxed text-red-100/75">
+                  Ton abonnement sera résilié immédiatement : plus aucun prélèvement, mais le temps restant du mois déjà
+                  payé est perdu. Pour en profiter jusqu’au bout, résilie d’abord depuis la section Abonnement et
+                  supprime ton compte à l’échéance.
+                </p>
+              ) : null}
+              {deleteErr ? (
+                <p role="alert" className="mt-3 text-[13.5px] text-red-200/95">
+                  {deleteErr}
+                </p>
+              ) : null}
+              <label className="mt-4 block max-w-sm">
+                <span className="text-[12.5px] font-medium text-red-200/70">Mot de passe pour confirmer</span>
                 <input
                   type="password"
-                  className="field mt-2 border-white/[0.08] bg-surface-2/80"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="field mt-1.5 border-red-500/20 bg-surface-2/80"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
                   autoComplete="current-password"
                 />
               </label>
-              <label className="mt-3 block">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-white/40">
-                  Nouveau mot de passe
-                </span>
-                <input
-                  type="password"
-                  className="field mt-2 border-white/[0.08] bg-surface-2/80"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </label>
-              <label className="mt-3 block">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-white/40">
-                  Confirmer le nouveau
-                </span>
-                <input
-                  type="password"
-                  className="field mt-2 border-white/[0.08] bg-surface-2/80"
-                  value={newPassword2}
-                  onChange={(e) => setNewPassword2(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </label>
+              <button
+                type="button"
+                className="mt-4 w-full cursor-pointer rounded-xl border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm font-semibold text-red-100 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                disabled={deleting}
+                onClick={() => void onDeleteAccount()}
+              >
+                {deleting ? 'Suppression…' : 'Supprimer mon compte définitivement'}
+              </button>
             </div>
-
-            <button type="submit" className="btn-brand w-full sm:w-auto" disabled={saving}>
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
-          </form>
-
-          <section className="rounded-2xl border border-red-500/25 bg-red-500/[0.06] p-5 sm:p-6">
-            <h2 className="font-display text-sm font-semibold text-red-100/95">Zone dangereuse</h2>
-            <p className="mt-2 text-sm leading-relaxed text-red-100/75">
-              Supprimer le compte efface tout : conversations avec le coach, objectifs et plans, historique des courses
-              live, et la liaison Strava côté serveur.
-            </p>
-            {me.plan !== 'standard' ? (
-              <p className="mt-2 text-sm leading-relaxed text-red-100/75">
-                Ton abonnement sera résilié immédiatement : plus aucun prélèvement, mais le temps restant
-                du mois déjà payé est perdu. Pour en profiter jusqu’au bout, résilie d’abord depuis la
-                section Abonnement et supprime ton compte à l’échéance.
-              </p>
-            ) : null}
-            {deleteErr ? (
-              <p className="mt-3 text-sm text-red-200/95">{deleteErr}</p>
-            ) : null}
-            <label className="mt-4 block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-red-200/70">
-                Mot de passe pour confirmer
-              </span>
-              <input
-                type="password"
-                className="field mt-2 border-red-500/20 bg-surface-2/80"
-                value={deletePassword}
-                onChange={(e) => setDeletePassword(e.target.value)}
-                autoComplete="current-password"
-              />
-            </label>
-            <button
-              type="button"
-              className="mt-4 w-full rounded-xl border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm font-semibold text-red-100 transition hover:bg-red-500/25 disabled:opacity-50 sm:w-auto"
-              disabled={deleting}
-              onClick={() => void onDeleteAccount()}
-            >
-              {deleting ? 'Suppression…' : 'Supprimer mon compte définitivement'}
-            </button>
-          </section>
+          </details>
         </main>
 
       </div>

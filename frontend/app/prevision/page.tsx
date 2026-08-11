@@ -3,10 +3,8 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
-import { Mark } from '@/components/Mark'
-import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 import { MemberPageHeader } from '@/components/MemberPageHeader'
-import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
+import { MemberSidebar } from '@/components/MemberSidebar'
 import {
   FormeDuJourPanel,
   HeroSummary,
@@ -177,46 +175,15 @@ export default function PrevisionPage() {
 
   return (
     <div className="member-app flex min-h-[100dvh] overflow-x-hidden md:h-[100dvh] md:min-h-0 md:overflow-hidden">
-      <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
-        <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
-          <Link href="/dashboard/" aria-label="NeuroRun">
-            <Mark compact />
-          </Link>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
-          <MemberPrimaryNav
-            active="prevision"
-            capabilities={me?.capabilities}
-            isAdmin={me?.role === 'admin'}
-            profileFirstName={me?.first_name}
-          />
-        </div>
-      </aside>
-
-      <MemberMobileDrawer
+      <MemberSidebar
+        active="prevision"
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        headerLeading={
-          <Link
-            href="/dashboard/"
-            onClick={() => setSidebarOpen(false)}
-            className="inline-flex"
-            aria-label="NeuroRun — tableau de bord"
-          >
-            <Mark compact />
-          </Link>
-        }
-      >
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
-          <MemberPrimaryNav
-            active="prevision"
-            onNavigate={() => setSidebarOpen(false)}
-            capabilities={me?.capabilities}
-            isAdmin={me?.role === 'admin'}
-            profileFirstName={me?.first_name}
-          />
-        </div>
-      </MemberMobileDrawer>
+        capabilities={me?.capabilities}
+        isAdmin={me?.role === 'admin'}
+        firstName={me?.first_name}
+        lastName={me?.last_name}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden md:h-[100dvh] md:overflow-y-auto">
       <MemberPageHeader

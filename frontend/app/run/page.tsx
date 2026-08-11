@@ -6,10 +6,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { LiveRunHistory } from '@/components/LiveRunHistory'
 import { LiveRunPanel } from '@/components/LiveRunPanel'
 import { StravaLinkBanner } from '@/components/StravaLinkBanner'
-import { Mark } from '@/components/Mark'
-import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 import { MemberPageHeader } from '@/components/MemberPageHeader'
-import { MemberPrimaryNav } from '@/components/MemberPrimaryNav'
+import { MemberSidebar } from '@/components/MemberSidebar'
 import { ApiError, fetchMe, type MeUser } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 import { saveMeCache } from '@/lib/meCache'
@@ -81,48 +79,15 @@ export default function RunPage() {
       }`}
     >
       {!runFocusMode ? (
-        <>
-          <aside className="relative z-30 hidden min-h-0 w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0c12] md:sticky md:top-0 md:flex md:h-[100dvh] md:max-h-[100dvh]">
-            <div className="border-b border-white/[0.06] px-safe pt-safe pb-3">
-              <Link href="/dashboard/" aria-label="NeuroRun">
-                <Mark compact />
-              </Link>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
-              <MemberPrimaryNav
-                active="run"
-                capabilities={me?.capabilities}
-                isAdmin={me?.role === 'admin'}
-                profileFirstName={me?.first_name}
-              />
-            </div>
-          </aside>
-
-          <MemberMobileDrawer
-            open={sidebarOpen}
-            onClose={() => setSidebarOpen(false)}
-            headerLeading={
-              <Link
-                href="/dashboard/"
-                onClick={() => setSidebarOpen(false)}
-                className="inline-flex"
-                aria-label="NeuroRun — tableau de bord"
-              >
-                <Mark compact />
-              </Link>
-            }
-          >
-            <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 px-safe pb-safe">
-              <MemberPrimaryNav
-                active="run"
-                onNavigate={() => setSidebarOpen(false)}
-                capabilities={me?.capabilities}
-                isAdmin={me?.role === 'admin'}
-                profileFirstName={me?.first_name}
-              />
-            </div>
-          </MemberMobileDrawer>
-        </>
+        <MemberSidebar
+          active="run"
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          capabilities={me?.capabilities}
+          isAdmin={me?.role === 'admin'}
+          firstName={me?.first_name}
+          lastName={me?.last_name}
+        />
       ) : null}
 
       <div
@@ -138,6 +103,7 @@ export default function RunPage() {
         {!runFocusMode ? (
           <MemberPageHeader
             title="Course"
+            subtitle="Tes sorties, dans le détail"
             onMenuClick={() => setSidebarOpen((o) => !o)}
             menuOpen={sidebarOpen}
             onLogout={logout}
@@ -149,7 +115,7 @@ export default function RunPage() {
           className={
             runFocusMode
               ? 'flex min-h-0 flex-1 flex-col pt-safe'
-              : 'member-main-pad-b mx-auto w-full max-w-3xl flex-1 space-y-6 px-safe py-6 sm:space-y-8 sm:py-8'
+              : 'member-main-pad-b mx-auto w-full max-w-3xl flex-1 space-y-6 px-safe py-6 sm:py-8'
           }
         >
           <LiveRunPanel
