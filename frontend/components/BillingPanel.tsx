@@ -24,7 +24,7 @@ function formatDate(iso?: string) {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-/** Libellés des statuts Stripe susceptibles d’être affichés au client. */
+/** Libellés des statuts Stripe (web) et App Store (iOS) susceptibles d’être affichés au client. */
 function statusNote(state: BillingState): string {
   switch (state.status) {
     case 'past_due':
@@ -33,6 +33,12 @@ function statusNote(state: BillingState): string {
       return 'Paiement impossible après plusieurs tentatives. Ton offre a été suspendue.'
     case 'incomplete':
       return 'Paiement non finalisé.'
+    case 'billing_retry':
+      return 'Dernier prélèvement refusé — Apple va réessayer. Vérifie ton moyen de paiement dans les réglages de ton iPhone.'
+    case 'grace_period':
+      return 'Problème de paiement chez Apple. Ton offre reste ouverte quelques jours, le temps de régulariser depuis ton iPhone.'
+    case 'revoked':
+      return 'Cet abonnement a été remboursé par Apple. Ton compte est repassé à l’offre gratuite.'
     default:
       return ''
   }
@@ -138,7 +144,7 @@ export function BillingPanel({ onPlanChange }: { onPlanChange?: () => void }) {
     <section className="panel p-5 sm:p-6">
       <h2 className="font-display text-sm font-semibold text-white">Abonnement</h2>
 
-      {state.cancel_at_period_end && state.ends_at ? (
+      {state.cancel_at_period_end && state.ends_at && !state.managed_externally ? (
         <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
           <p className="font-medium">Résiliation programmée</p>
           <p className="mt-1 text-amber-100/80">
@@ -221,7 +227,28 @@ export function BillingPanel({ onPlanChange }: { onPlanChange?: () => void }) {
         </div>
       ) : null}
 
-      {state.has_subscription && !state.cancel_at_period_end ? (
+      {/*
+        Abonnement souscrit via l’App Store : Apple interdit à un tiers de le résilier, l’API
+        répondrait 409. On remplace donc les commandes par la marche à suivre côté iPhone.
+      */}
+      {state.managed_externally ? (
+        <div className="mt-6 border-t border-white/[0.06] pt-5">
+          <p className="text-sm text-white/75">Abonnement souscrit dans l’application iOS</p>
+          {state.cancel_at_period_end && state.ends_at ? (
+            <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+              Renouvellement automatique désactivé : tu gardes ton offre jusqu’au{' '}
+              {formatDate(state.ends_at)}, puis ton compte bascule sur l’offre gratuite.
+            </p>
+          ) : null}
+          <p className="mt-1 text-xs leading-relaxed text-white/45">
+            Il est facturé par Apple sur ton identifiant Apple. La résiliation et le changement de
+            moyen de paiement se font depuis ton iPhone : Réglages &gt; ton nom &gt; Abonnements
+            &gt; NeuroRun. Tes factures sont disponibles dans ton compte Apple.
+          </p>
+        </div>
+      ) : null}
+
+      {state.has_subscription && !state.cancel_at_period_end && !state.managed_externally ? (
         <div className="mt-6 border-t border-white/[0.06] pt-5">
           {confirmingCancel ? (
             <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">

@@ -193,6 +193,23 @@ export default function HomePage() {
     }
   }, [router])
 
+  /*
+   * Arrivée directe sur « /#offres » (bouton « Voir les prix » de l’app, email, lien partagé) :
+   * le navigateur saute bien à l’ancre, puis l’App Router remet le défilement à zéro en
+   * hydratant — on atterrissait donc en haut de page. On rejoue l’ancre une fois le contenu
+   * monté. `scroll-mt-24` sur la cible garde la marge sous l’en-tête fixe.
+   */
+  useEffect(() => {
+    const id = window.location.hash.slice(1)
+    if (!id) return
+    const target = document.getElementById(id)
+    if (!target) return
+    const raf = requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'auto', block: 'start' })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
   /* Carrousel : centrage de l’offre mise en avant + halo sur la carte au centre (mobile) */
   useEffect(() => {
     const scroller = offersScrollRef.current

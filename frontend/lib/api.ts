@@ -254,6 +254,13 @@ export type BillingInvoice = {
 export type BillingState = {
   plan: string;
   has_subscription: boolean;
+  /** Qui encaisse : "stripe" (web) ou "apple" (achat intégré iOS). Absent sans abonnement. */
+  provider?: "stripe" | "apple";
+  /**
+   * L’abonnement ne peut être ni résilié ni repris depuis NeuroRun : c’est le cas des achats
+   * App Store, qu’Apple réserve aux réglages iOS.
+   */
+  managed_externally?: boolean;
   status?: string;
   amount_cents?: number;
   currency?: string;
