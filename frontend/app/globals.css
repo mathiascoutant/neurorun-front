@@ -728,6 +728,332 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /*
+   * ——— Console d’administration ———
+   * Mêmes tokens que l’espace membre, mais l’accent d’état actif passe au glace :
+   * on doit voir d’un coup d’œil qu’on n’est plus dans son propre compte.
+   */
+
+  /* Étiquette d’état (rôle, offre, disponibilité). Le point porte la couleur,
+     le texte reste lisible : pas d’information portée par la seule teinte. */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.045);
+    padding: 3px 9px;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 15px;
+    white-space: nowrap;
+    color: rgba(255, 255, 255, 0.72);
+  }
+  .badge-dot {
+    height: 6px;
+    width: 6px;
+    flex: none;
+    border-radius: 9999px;
+    background-color: currentColor;
+  }
+  .badge--brand {
+    border-color: rgba(252, 76, 2, 0.32);
+    background-color: rgba(252, 76, 2, 0.12);
+    color: #ffb494;
+  }
+  .badge--ice {
+    border-color: rgba(103, 232, 249, 0.28);
+    background-color: rgba(103, 232, 249, 0.1);
+    color: #a5f3fc;
+  }
+  .badge--ok {
+    border-color: rgba(52, 211, 153, 0.28);
+    background-color: rgba(52, 211, 153, 0.1);
+    color: #6ee7b7;
+  }
+  .badge--warn {
+    border-color: rgba(251, 191, 36, 0.28);
+    background-color: rgba(251, 191, 36, 0.1);
+    color: #fcd34d;
+  }
+  .badge--danger {
+    border-color: rgba(248, 113, 113, 0.3);
+    background-color: rgba(248, 113, 113, 0.1);
+    color: #fca5a5;
+  }
+
+  /* Tableau de données : en-tête collant, lignes hautes de 44 px minimum. */
+  .table-wrap {
+    overflow: auto;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background-color: #0d0f16;
+    -webkit-overflow-scrolling: touch;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    text-align: left;
+    font-size: 13.5px;
+  }
+  .data-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: #12141c;
+    padding: 10px 14px;
+    font-family: var(--font-ibm), system-ui, sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+    white-space: nowrap;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .data-table tbody td {
+    padding: 11px 14px;
+    color: rgba(255, 255, 255, 0.8);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+    vertical-align: middle;
+  }
+  .data-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .data-table tbody tr {
+    transition: background-color 0.15s ease;
+  }
+  .data-table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.028);
+  }
+  .data-table .num {
+    font-variant-numeric: tabular-nums;
+  }
+  /* En-tête cliquable de tri : la flèche n’apparaît que sur la colonne triée. */
+  .sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border-radius: 6px;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    font: inherit;
+    transition: color 0.15s ease;
+  }
+  .sort-btn:hover {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .sort-btn:focus-visible {
+    outline: 2px solid rgba(103, 232, 249, 0.6);
+    outline-offset: 3px;
+  }
+
+  /* Bouton d’action compact en fin de ligne. */
+  .icon-btn {
+    display: inline-flex;
+    height: 32px;
+    width: 32px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background-color: rgba(255, 255, 255, 0.035);
+    color: rgba(255, 255, 255, 0.62);
+    transition:
+      background-color 0.16s ease,
+      border-color 0.16s ease,
+      color 0.16s ease;
+  }
+  .icon-btn:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+  .icon-btn:focus-visible {
+    outline: 2px solid rgba(103, 232, 249, 0.6);
+    outline-offset: 2px;
+  }
+  .icon-btn--danger:hover {
+    border-color: rgba(248, 113, 113, 0.4);
+    background-color: rgba(248, 113, 113, 0.12);
+    color: #fca5a5;
+  }
+
+  /* Interrupteur (contenu des offres). L’état se lit sur la position ET la couleur. */
+  .switch {
+    position: relative;
+    display: inline-flex;
+    height: 22px;
+    width: 38px;
+    flex: none;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background-color: rgba(255, 255, 255, 0.08);
+    transition:
+      background-color 0.18s ease,
+      border-color 0.18s ease;
+  }
+  .switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    height: 16px;
+    width: 16px;
+    border-radius: 9999px;
+    background-color: rgba(255, 255, 255, 0.75);
+    transition:
+      transform 0.18s ease,
+      background-color 0.18s ease;
+  }
+  .switch-input:checked + .switch {
+    border-color: rgba(252, 76, 2, 0.5);
+    background-image: linear-gradient(135deg, #fc4c02 0%, #c73d00 100%);
+  }
+  .switch-input:checked + .switch::after {
+    transform: translateX(16px);
+    background-color: #fff;
+  }
+  .switch-input:focus-visible + .switch {
+    outline: 2px solid rgba(252, 76, 2, 0.65);
+    outline-offset: 2px;
+  }
+  .switch-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background-color: rgba(255, 255, 255, 0.02);
+    padding: 10px 12px;
+    cursor: pointer;
+    transition:
+      border-color 0.16s ease,
+      background-color 0.16s ease;
+  }
+  .switch-row:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+    background-color: rgba(255, 255, 255, 0.045);
+  }
+
+  /* Jauge de remplissage (quota d’un code promo, part d’un palier). */
+  .meter {
+    height: 6px;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 9999px;
+    background-color: rgba(255, 255, 255, 0.08);
+  }
+  .meter-fill {
+    height: 100%;
+    border-radius: 9999px;
+    background-image: linear-gradient(90deg, #fc4c02 0%, #ff7a3d 100%);
+    transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .meter-fill--ice {
+    background-image: linear-gradient(90deg, #0f9cb8 0%, #67e8f9 100%);
+  }
+
+  /* Panneau latéral (fiche utilisateur) : glisse depuis la droite. */
+  .drawer-panel {
+    display: flex;
+    width: 100%;
+    max-width: 720px;
+    flex-direction: column;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: #0a0c12;
+    box-shadow: -24px 0 60px rgba(0, 0, 0, 0.5);
+    animation: drawer-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes drawer-in {
+    from {
+      transform: translateX(18px);
+      opacity: 0.4;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  .modal-panel {
+    animation: modal-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes modal-in {
+    from {
+      transform: translateY(8px) scale(0.985);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .drawer-panel,
+    .modal-panel {
+      animation: none;
+    }
+  }
+
+  /* Barre d’enregistrement des offres : collée en bas tant qu’il reste des changements. */
+  .save-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(252, 76, 2, 0.28);
+    background-color: rgba(20, 15, 12, 0.94);
+    backdrop-filter: blur(12px);
+    padding: 12px 14px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Pile de notifications (remplace les alert() natifs). */
+  .toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: rgba(18, 21, 31, 0.97);
+    padding: 11px 13px;
+    font-size: 13px;
+    line-height: 18px;
+    color: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    animation: toast-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .toast--ok {
+    border-color: rgba(52, 211, 153, 0.35);
+  }
+  .toast--error {
+    border-color: rgba(248, 113, 113, 0.4);
+  }
+  @keyframes toast-in {
+    from {
+      transform: translateY(10px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .toast {
+      animation: none;
+    }
+  }
+
   /* Tableau de secours sous un graphique (lecture au clavier / lecteur d’écran). */
   .chart-table {
     width: 100%;
