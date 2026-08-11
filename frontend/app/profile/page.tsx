@@ -20,18 +20,17 @@ import {
 } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 import { saveMeCache } from '@/lib/meCache'
+import { useTierLabel } from '@/lib/useOfferConfig'
 
-function planLabel(plan?: string): { title: string; hint: string } {
+/** Accroche par palier — le nom, lui, vient de la config serveur (`useTierLabel`). */
+function planHint(plan?: string): string {
   switch (plan) {
     case 'performance':
-      return {
-        title: 'Performance',
-        hint: 'Prévision, objectifs avancés, circuit selon offre.',
-      }
+      return 'Prévision, objectifs avancés, circuit selon offre.'
     case 'strava':
-      return { title: 'Strava', hint: 'Tableau de bord et coach enrichi par tes sorties.' }
+      return 'Tableau de bord et coach enrichi par tes sorties.'
     default:
-      return { title: 'Standard', hint: 'Offre gratuite : coach IA, sans sync Strava payante.' }
+      return 'Offre gratuite : coach IA, sans sync Strava payante.'
   }
 }
 
@@ -74,6 +73,9 @@ export default function ProfilePage() {
   const [ready, setReady] = useState(false)
   const [me, setMe] = useState<MeUser | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const planTitle = useTierLabel(me?.plan)
+  const stravaTitle = useTierLabel('strava')
+  const performanceTitle = useTierLabel('performance')
 
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -231,7 +233,7 @@ export default function ProfilePage() {
   }
 
   const stravaOffer = me.capabilities?.strava_dashboard !== false
-  const plan = planLabel(me.plan)
+  const planHintText = planHint(me.plan)
   const birthMax = new Date().toISOString().slice(0, 10)
 
   return (
@@ -322,26 +324,26 @@ export default function ProfilePage() {
             <p className="app-kicker text-white/38">Offre actuelle</p>
             {me.plan === 'strava' || me.plan === 'performance' ? (
               <p className="mt-1.5 font-display text-[26px] font-bold leading-8">
-                <GradientText tone={me.plan === 'strava' ? 'ice' : 'fire'}>{plan.title}</GradientText>
+                <GradientText tone={me.plan === 'strava' ? 'ice' : 'fire'}>{planTitle}</GradientText>
               </p>
             ) : (
-              <p className="mt-1.5 font-display text-[26px] font-bold leading-8 text-white">{plan.title}</p>
+              <p className="mt-1.5 font-display text-[26px] font-bold leading-8 text-white">{planTitle}</p>
             )}
-            <p className="mt-1.5 text-sm leading-relaxed text-white/45">{plan.hint}</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-white/45">{planHintText}</p>
             {me.plan !== 'performance' ? (
               <div className="mt-4 flex flex-wrap gap-2">
                 {me.plan === 'standard' ? (
                   <>
                     <Link href="/checkout/strava/" className="btn-quiet px-4 text-sm">
-                      Passer à Strava
+                      Passer à {stravaTitle}
                     </Link>
                     <Link href="/checkout/performance/" className="btn-brand px-4 text-sm">
-                      Performance
+                      {performanceTitle}
                     </Link>
                   </>
                 ) : me.plan === 'strava' ? (
                   <Link href="/checkout/performance/" className="btn-brand px-4 text-sm">
-                    Passer à Performance
+                    Passer à {performanceTitle}
                   </Link>
                 ) : null}
               </div>

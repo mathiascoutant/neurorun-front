@@ -10,17 +10,10 @@ import {
   createCheckoutSession,
   fetchMe,
   fetchPaymentConfig,
-  fetchPublicOfferConfig,
   type MeUser,
-  type OfferConfigPayload,
 } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
-import {
-  DEFAULT_OFFER_CONFIG,
-  capitalize,
-  mergePublicOfferConfig,
-  tierLabelFromConfig,
-} from '@/lib/offerConfig'
+import { useTierLabel } from '@/lib/useOfferConfig'
 
 type PaidPlan = 'strava' | 'performance'
 
@@ -45,7 +38,7 @@ export function CheckoutPlanClient() {
 
   const [phase, setPhase] = useState<Phase>('loading')
   const [me, setMe] = useState<MeUser | null>(null)
-  const [offerCfg, setOfferCfg] = useState<OfferConfigPayload>(DEFAULT_OFFER_CONFIG)
+  const planLabel = useTierLabel(plan)
   const [promo, setPromo] = useState('')
   const [preview, setPreview] = useState<{
     base_price_eur: number
@@ -70,21 +63,6 @@ export function CheckoutPlanClient() {
     },
     [router],
   )
-
-  useEffect(() => {
-    let off = false
-    ;(async () => {
-      try {
-        const cfg = await fetchPublicOfferConfig()
-        if (!off) setOfferCfg(mergePublicOfferConfig(cfg))
-      } catch {
-        /* garde les défauts si l’API est injoignable */
-      }
-    })()
-    return () => {
-      off = true
-    }
-  }, [])
 
   useEffect(() => {
     if (!plan) return
@@ -208,7 +186,6 @@ export function CheckoutPlanClient() {
     )
   }
 
-  const planLabel = capitalize(tierLabelFromConfig(offerCfg, plan))
   const busy = phase === 'redirecting' || phase === 'returning' || phase === 'done'
 
   return (

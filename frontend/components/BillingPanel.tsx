@@ -8,6 +8,7 @@ import {
   type BillingState,
 } from '@/lib/api'
 import { getToken } from '@/lib/auth'
+import { useTierLabel } from '@/lib/useOfferConfig'
 
 function formatAmount(cents: number, currency = 'eur') {
   return new Intl.NumberFormat('fr-FR', {
@@ -21,12 +22,6 @@ function formatDate(iso?: string) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-function planTitle(plan: string): string {
-  if (plan === 'performance') return 'Performance'
-  if (plan === 'strava') return 'Strava'
-  return 'Standard'
 }
 
 /** Libellés des statuts Stripe susceptibles d’être affichés au client. */
@@ -49,6 +44,7 @@ export function BillingPanel({ onPlanChange }: { onPlanChange?: () => void }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const planTitle = useTierLabel(state?.plan)
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const token = getToken()
@@ -119,7 +115,7 @@ export function BillingPanel({ onPlanChange }: { onPlanChange?: () => void }) {
           </span>
         </div>
         <p className="mt-3 text-sm leading-relaxed text-white/60">
-          Ton offre <span className="font-medium text-white/90">{planTitle(state.plan)}</span> est
+          Ton offre <span className="font-medium text-white/90">{planTitle}</span> est
           active <span className="font-medium text-white/90">sans abonnement payant</span> — code
           promo à 100 % ou activation par un administrateur.
         </p>

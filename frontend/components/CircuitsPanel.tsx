@@ -30,6 +30,7 @@ import {
 } from '@/lib/api'
 import { loadLeaflet } from '@/lib/leafletLoader'
 import { clearToken, getToken } from '@/lib/auth'
+import { useTierLabel } from '@/lib/useOfferConfig'
 
 /** Ordre de visite à partir du départ, sans dupliquer le 1er point à la fin (tracé ouvert sur la carte). */
 function orderedPathPoints(pts: CircuitLatLng[], start: number): CircuitLatLng[] {
@@ -411,6 +412,9 @@ export function CircuitsPanel() {
   const ct = me?.capabilities?.circuit_tracks
   const hasCap = ct === true || (ct === undefined && me?.plan === 'performance')
 
+  /** Nom de l’offre requise, affiché dans l’écran de blocage. */
+  const gateLabel = useTierLabel('performance')
+
   useEffect(() => {
     loadLeaflet().then(setLmod).catch(() => setLeafletErr('Impossible de charger la carte (réseau).'))
   }, [])
@@ -532,7 +536,9 @@ export function CircuitsPanel() {
   if (!hasCap) {
     return (
       <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 px-4 text-center">
-        <p className="text-white/75">Les parcours chronométrés sont réservés à l’offre Performance.</p>
+        <p className="text-white/75">
+          Les parcours chronométrés sont réservés à l’offre {gateLabel}.
+        </p>
         <Link href="/profile/" className="btn-brand px-5 py-2.5 text-sm">
           Voir mon offre
         </Link>

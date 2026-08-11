@@ -1,21 +1,20 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mark } from '@/components/Mark'
 import { RevealOnScroll } from '@/components/RevealOnScroll'
-import { ApiError, fetchMe, fetchPublicOfferConfig, type OfferConfigPayload } from '@/lib/api'
+import { ApiError, fetchMe } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 import {
-  DEFAULT_OFFER_CONFIG,
   TIER_FEATURE_ROWS,
   capitalize,
-  mergePublicOfferConfig,
   orderedTierIds,
   tierLabelFromConfig,
   tierPriceEUR,
 } from '@/lib/offerConfig'
+import { usePublicOfferConfig } from '@/lib/useOfferConfig'
 
 type OfferId = string
 
@@ -96,6 +95,13 @@ const OFFER_TAGLINE: Record<string, string> = {
   performance: 'Complet : IA avancée, Strava et plans sur circuit.',
 }
 
+/** « Allure ou Performance » — énumération disjonctive des offres payantes configurées. */
+function joinOr(labels: string[]): string {
+  if (labels.length === 0) return 'une offre payante'
+  if (labels.length === 1) return labels[0]
+  return `${labels.slice(0, -1).join(', ')} ou ${labels[labels.length - 1]}`
+}
+
 function formatMonthlyEUR(n: number): string {
   if (n <= 0) return '0 €'
   return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
@@ -115,7 +121,7 @@ function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 export default function HomePage() {
   const router = useRouter()
-  const [offerCfg, setOfferCfg] = useState<OfferConfigPayload>(DEFAULT_OFFER_CONFIG)
+  const offerCfg = usePublicOfferConfig()
   const offersScrollRef = useRef<HTMLDivElement | null>(null)
   const offerRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [carouselActive, setCarouselActive] = useState<OfferId | null>(null)
@@ -127,20 +133,43 @@ export default function HomePage() {
     [tierIds],
   )
 
-  useEffect(() => {
-    let off = false
-    ;(async () => {
-      try {
-        const cfg = await fetchPublicOfferConfig()
-        if (!off) setOfferCfg(mergePublicOfferConfig(cfg))
-      } catch {
-        /* garde les défauts si l’API est injoignable */
-      }
-    })()
-    return () => {
-      off = true
-    }
-  }, [])
+  /** Nom commercial d’un palier, prêt à insérer dans une phrase (« Allure »). */
+  const labelFor = useCallback(
+    (id: string) => capitalize(tierLabelFromConfig(offerCfg, id)),
+    [offerCfg],
+  )
+
+  /**
+   * Textes éditoriaux qui nomment une offre : les libellés viennent de la config serveur, donc un
+   * renommage en admin se propage au site sans redéploiement.
+   */
+  const faqItems = useMemo(() => {
+    const freeId = tierIds.find((id) => tierPriceEUR(offerCfg, id) <= 0) ?? 'standard'
+    const paidLabels = tierIds
+      .filter((id) => tierPriceEUR(offerCfg, id) > 0)
+      .map((id) => capitalize(tierLabelFromConfig(offerCfg, id)))
+    return [
+      {
+        q: 'Strava est-il obligatoire ?',
+        a:
+          `Non pour l’offre ${capitalize(tierLabelFromConfig(offerCfg, freeId))} : chat coach IA ` +
+          'sans liaison. Strava est inclus ou pertinent pour les offres payantes qui s’appuient sur ' +
+          'tes sorties.',
+      },
+      {
+        q: 'Puis-je changer d’offre plus tard ?',
+        a:
+          `Oui. Tu peux commencer gratuitement, puis souscrire à ${joinOr(paidLabels)} depuis le ` +
+          'parcours d’inscription ou ton compte selon les options disponibles.',
+      },
+      {
+        q: 'Qui a accès à mes activités Strava ?',
+        a:
+          'Les données synchronisées sont utilisées pour enrichir ton coaching et tes écrans dans ' +
+          'l’app. Tu gères la connexion depuis ton compte utilisateur.',
+      },
+    ]
+  }, [offerCfg, tierIds])
 
   /* Pas d’écran de blocage : contenu visible tout de suite ; session vérifiée en arrière-plan. */
   useLayoutEffect(() => {
@@ -507,7 +536,7 @@ export default function HomePage() {
                 <div className="h-full rounded-3xl border border-brand-ice/22 bg-gradient-to-br from-brand-ice/[0.09] to-transparent p-5 sm:p-6">
                   <h3 className="font-display text-sm font-semibold text-white sm:text-base">Objectifs &amp; prévisions</h3>
                   <p className="mt-2 text-xs leading-relaxed text-white/48 sm:text-sm">
-                    Lecture des signaux et cadrage quand tu es sur l&apos;offre Performance.
+                    Lecture des signaux et cadrage quand tu es sur l&apos;offre {labelFor('performance')}.
                   </p>
                 </div>
               </RevealOnScroll>
@@ -519,14 +548,15 @@ export default function HomePage() {
                     <div>
                       <h3 className="font-display text-sm font-semibold text-white sm:text-base">Plans circuit</h3>
                       <p className="mt-1 text-xs leading-relaxed text-white/45 sm:text-sm">
-                        Séquences pensées pour la piste et la distance visée — inclus dans Performance.
+                        Séquences pensées pour la piste et la distance visée — inclus dans{' '}
+                        {labelFor('performance')}.
                       </p>
                     </div>
                     <Link
                       href="/register/?next=/checkout/performance/"
                       className="shrink-0 rounded-2xl border border-white/15 px-4 py-2.5 text-center text-xs font-medium text-white/75 transition hover:border-brand-ice/35 hover:bg-brand-ice/5 hover:text-white sm:text-sm"
                     >
-                      Voir l&apos;offre Performance
+                      Voir l&apos;offre {labelFor('performance')}
                     </Link>
                   </div>
                 </div>
@@ -571,20 +601,7 @@ export default function HomePage() {
             </RevealOnScroll>
             <RevealOnScroll variant="fade-left" delayMs={100} className="mt-8 lg:col-span-8 lg:mt-0">
             <div className="divide-y divide-white/[0.07] overflow-hidden rounded-3xl border border-white/[0.09] bg-white/[0.02] backdrop-blur-md">
-              {[
-                {
-                  q: 'Strava est-il obligatoire ?',
-                  a: 'Non pour l’offre Standard : chat coach IA sans liaison. Strava est inclus ou pertinent pour les offres payantes qui s’appuient sur tes sorties.',
-                },
-                {
-                  q: 'Puis-je changer d’offre plus tard ?',
-                  a: 'Oui. Tu peux commencer gratuitement, puis souscrire à Strava ou Performance depuis le parcours d’inscription ou ton compte selon les options disponibles.',
-                },
-                {
-                  q: 'Qui a accès à mes activités Strava ?',
-                  a: 'Les données synchronisées sont utilisées pour enrichir ton coaching et tes écrans dans l’app. Tu gères la connexion depuis ton compte utilisateur.',
-                },
-              ].map((item) => (
+              {faqItems.map((item) => (
                 <details
                   key={item.q}
                   className="group [&_summary::-webkit-details-marker]:hidden"

@@ -30,6 +30,7 @@ import {
   type StravaPacePoint,
 } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
+import { useTierLabel } from '@/lib/useOfferConfig'
 
 /** Libellés courts façon contrôle segmenté de l’app (7J / 30J / 3M / 1A / Tout). */
 const PERIODS: { id: StravaDashboardPeriod; label: string; long: string }[] = [
@@ -73,14 +74,15 @@ function formatDuration(hours: number): string {
   return `${h}h${m.toString().padStart(2, '0')}`
 }
 
-function planInfo(plan?: string): { title: string; accent: string } {
+/** Couleur d’accent par palier — le nom affiché vient de la config serveur (`useTierLabel`). */
+function planAccent(plan?: string): string {
   switch ((plan ?? 'standard').toLowerCase().trim()) {
     case 'performance':
-      return { title: 'Performance', accent: '#fc4c02' }
+      return '#fc4c02'
     case 'strava':
-      return { title: 'Strava', accent: '#67e8f9' }
+      return '#67e8f9'
     default:
-      return { title: 'Standard', accent: 'rgba(255,255,255,0.6)' }
+      return 'rgba(255,255,255,0.6)'
   }
 }
 
@@ -192,6 +194,8 @@ export function RunDashboard() {
   const [err, setErr] = useState('')
 
   const stravaOffer = me?.capabilities?.strava_dashboard !== false
+  const planTitle = useTierLabel(me?.plan)
+  const accent = planAccent(me?.plan)
 
   useEffect(() => {
     const token = getToken()
@@ -327,14 +331,14 @@ export function RunDashboard() {
           <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-[7px]">
             <span
               className="h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: planInfo(me.plan).accent }}
+              style={{ backgroundColor: accent }}
             />
             <span className="text-[11px] uppercase leading-none tracking-[0.11em] text-white/38">Offre</span>
             <span
               className="font-display text-[13px] font-semibold leading-none"
-              style={{ color: planInfo(me.plan).accent }}
+              style={{ color: accent }}
             >
-              {planInfo(me.plan).title}
+              {planTitle}
             </span>
           </div>
         </div>
