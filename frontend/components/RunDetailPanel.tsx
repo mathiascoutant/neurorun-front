@@ -74,20 +74,43 @@ const ZONE_COLORS: Record<number, string> = {
 function buildHighlights(m: RunMetrics): string[] {
   const out: string[] = [];
 
-  if (m.negativeSplitSec != null && Math.abs(m.negativeSplitSec) >= 4) {
-    out.push(
-      m.negativeSplitSec < 0
-        ? `Tu as accéléré : la seconde moitié est ${fmtSignedSec(m.negativeSplitSec).replace("−", "")} /km plus rapide que la première.`
-        : `Tu as ralenti de ${fmtSignedSec(m.negativeSplitSec).replace("+", "")} /km sur la seconde moitié.`,
-    );
-  }
-
-  if (m.bestKmPaceSecPerKm != null && m.worstKmPaceSecPerKm != null && m.splits.length >= 2) {
-    const spread = m.worstKmPaceSecPerKm - m.bestKmPaceSecPerKm;
-    if (spread >= 5) {
+  // Sur un fractionné, l’écart d’allure et le ralentissement de seconde moitié
+  // sont la séance elle-même, pas un défaut : on lit les efforts, pas la moyenne.
+  if (m.isInterval) {
+    if (m.intervals != null) {
+      const i = m.intervals;
       out.push(
-        `Allure entre ${fmtPace(m.bestKmPaceSecPerKm)} et ${fmtPace(m.worstKmPaceSecPerKm)} /km selon les kilomètres — ${spread < 20 ? "c’est très régulier" : "de la marge sur la régularité"}.`,
+        `Séance en fractionné : ${i.effort_count} efforts tenus à ${fmtPace(i.effort_pace_sec_per_km)} /km en moyenne, récupérations à ${fmtPace(i.recovery_pace_sec_per_km)} /km.`,
       );
+      out.push(
+        `C’est cette allure d’effort qui compte : la moyenne de ${fmtPace(m.avgPaceSecPerKm)} /km additionne les récupérations et ne décrit pas la séance.`,
+      );
+    } else {
+      out.push(
+        `Séance en fractionné : l’allure moyenne de ${fmtPace(m.avgPaceSecPerKm)} /km inclut les récupérations — c’est l’allure de tes efforts qui compte, pas elle.`,
+      );
+      if (m.bestKmPaceSecPerKm != null && m.worstKmPaceSecPerKm != null && m.splits.length >= 2) {
+        out.push(
+          `Allure entre ${fmtPace(m.bestKmPaceSecPerKm)} et ${fmtPace(m.worstKmPaceSecPerKm)} /km selon les kilomètres : sur ce type de séance, l’écart est voulu.`,
+        );
+      }
+    }
+  } else {
+    if (m.negativeSplitSec != null && Math.abs(m.negativeSplitSec) >= 4) {
+      out.push(
+        m.negativeSplitSec < 0
+          ? `Tu as accéléré : la seconde moitié est ${fmtSignedSec(m.negativeSplitSec).replace("−", "")} /km plus rapide que la première.`
+          : `Tu as ralenti de ${fmtSignedSec(m.negativeSplitSec).replace("+", "")} /km sur la seconde moitié.`,
+      );
+    }
+
+    if (m.bestKmPaceSecPerKm != null && m.worstKmPaceSecPerKm != null && m.splits.length >= 2) {
+      const spread = m.worstKmPaceSecPerKm - m.bestKmPaceSecPerKm;
+      if (spread >= 5) {
+        out.push(
+          `Allure entre ${fmtPace(m.bestKmPaceSecPerKm)} et ${fmtPace(m.worstKmPaceSecPerKm)} /km selon les kilomètres — ${spread < 20 ? "c’est très régulier" : "de la marge sur la régularité"}.`,
+        );
+      }
     }
   }
 
@@ -553,6 +576,11 @@ export function RunDetailPanel({ run, source, birthDate }: Props) {
           >
             {isStrava ? "Strava" : "NeuroRun"}
           </span>
+          {m.isInterval ? (
+            <span className="rounded-full border border-emerald-300/35 bg-emerald-300/[0.12] px-2.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-emerald-200">
+              Fractionné
+            </span>
+          ) : null}
           {isStrava && run.activity_name ? (
             <span className="truncate text-[11px] text-white/70">{run.activity_name}</span>
           ) : null}
@@ -571,11 +599,15 @@ export function RunDetailPanel({ run, source, birthDate }: Props) {
             <span className="text-[10px] text-white/38">temps en mouvement</span>
           </div>
           <div className="h-7 w-px bg-white/[0.08]" />
+          {/* Sur un fractionné, la moyenne mélange efforts et récupérations :
+              c’est l’allure des efforts qui dit ce que vaut la séance. */}
           <div className="flex flex-1 flex-col items-center gap-0.5">
             <span className="font-display text-base font-semibold tabular-nums text-white/95">
-              {fmtPace(m.avgPaceSecPerKm)}
+              {fmtPace(m.intervals ? m.intervals.effort_pace_sec_per_km : m.avgPaceSecPerKm)}
             </span>
-            <span className="text-[10px] text-white/38">allure moyenne /km</span>
+            <span className="text-center text-[10px] text-white/38">
+              {m.intervals ? "allure des efforts /km" : "allure moyenne /km"}
+            </span>
           </div>
           <div className="h-7 w-px bg-white/[0.08]" />
           <div className="flex flex-1 flex-col items-center gap-0.5">
@@ -602,10 +634,36 @@ export function RunDetailPanel({ run, source, birthDate }: Props) {
 
       <SectionCard
         title="Allure & vitesse"
-        subtitle="L’allure se lit en minutes par kilomètre : plus c’est bas, plus tu vas vite."
+        subtitle={
+          m.isInterval
+            ? "Séance en fractionné : lis l’allure des efforts, la moyenne inclut les récupérations."
+            : "L’allure se lit en minutes par kilomètre : plus c’est bas, plus tu vas vite."
+        }
       >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <MetricTile label="Allure moyenne" value={fmtPace(m.avgPaceSecPerKm)} unit="/km" />
+          {m.intervals ? (
+            <MetricTile
+              label="Allure des efforts"
+              value={fmtPace(m.intervals.effort_pace_sec_per_km)}
+              unit="/km"
+              hint={`${m.intervals.effort_count} efforts · ${fmtNum(m.intervals.effort_distance_m / 1000, 2)} km`}
+              color="#22c55e"
+            />
+          ) : null}
+          <MetricTile
+            label="Allure moyenne"
+            value={fmtPace(m.avgPaceSecPerKm)}
+            unit="/km"
+            hint={m.isInterval ? "Récupérations comprises" : undefined}
+          />
+          {m.intervals ? (
+            <MetricTile
+              label="Allure de récup"
+              value={fmtPace(m.intervals.recovery_pace_sec_per_km)}
+              unit="/km"
+              hint={`${fmtDuration(m.intervals.recovery_sec)} au total`}
+            />
+          ) : null}
           <MetricTile label="Vitesse moyenne" value={fmtNum(m.avgSpeedKmh, 1)} unit="km/h" />
           {m.maxSpeedKmh != null ? (
             <MetricTile
@@ -631,7 +689,9 @@ export function RunDetailPanel({ run, source, birthDate }: Props) {
               color="#eab308"
             />
           ) : null}
-          {m.negativeSplitSec != null ? (
+          {/* Le negative split compare deux moitiés supposées courues pareil :
+              sur un fractionné, il ne mesure que l’ordre des répétitions. */}
+          {m.negativeSplitSec != null && !m.isInterval ? (
             <MetricTile
               label="2e moitié"
               value={fmtSignedSec(m.negativeSplitSec)}

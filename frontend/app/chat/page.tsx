@@ -331,7 +331,11 @@ function ChatPageContent() {
           onMenuClick={() => setSidebarOpen((o) => !o)}
           menuOpen={sidebarOpen}
           onLogout={logout}
-          maxWidthClass="mx-auto w-full max-w-6xl"
+          maxWidthClass={
+            effectiveSection === 'goals'
+              ? 'mx-auto w-full max-w-[1400px]'
+              : 'mx-auto w-full max-w-6xl'
+          }
         />
 
         {effectiveSection === 'goals' && showGoals ? (

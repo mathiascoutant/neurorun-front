@@ -410,8 +410,15 @@ export function LiveRunHistory({
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[14px] font-medium leading-tight text-white/92">
-                            {isStrava && r.name ? r.name : when.day}
+                          <p className="flex items-center gap-1.5 text-[14px] font-medium leading-tight text-white/92">
+                            <span className="truncate">
+                              {isStrava && r.name ? r.name : when.day}
+                            </span>
+                            {r.is_interval ? (
+                              <span className="shrink-0 rounded-full border border-emerald-300/30 bg-emerald-300/[0.1] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.06em] text-emerald-200">
+                                Fractionné
+                              </span>
+                            ) : null}
                           </p>
                           <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[12px] leading-none">
                             <span className="whitespace-nowrap tabular-nums text-white/35">
@@ -423,7 +430,11 @@ export function LiveRunHistory({
                               icon="pace"
                               value={formatPaceMinPerKm(r.avg_pace_sec_per_km)}
                               unit="/km"
-                              label="Allure moyenne"
+                              label={
+                                r.is_interval
+                                  ? "Allure moyenne, récupérations comprises — ouvre la sortie pour l’allure des efforts"
+                                  : "Allure moyenne"
+                              }
                             />
                             {hasHr ? (
                               <Stat

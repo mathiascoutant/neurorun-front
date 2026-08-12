@@ -38,6 +38,7 @@ import {
   asArray,
   fetchMe,
   fetchStravaDashboard,
+  isStravaUnlinked,
   type MeUser,
   type StravaDashboard,
   type StravaDashboardPeriod,
@@ -223,6 +224,8 @@ export function RunDashboard() {
   const [authReady, setAuthReady] = useState(false)
   const [me, setMe] = useState<MeUser | null>(null)
   const [stravaLinked, setStravaLinked] = useState(false)
+  /** Le compte était relié et Strava a révoqué l'accès — à dire, sinon la demande d'association paraît sortie de nulle part. */
+  const [stravaRevoked, setStravaRevoked] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [period, setPeriod] = useState<StravaDashboardPeriod>('30d')
   const [data, setData] = useState<StravaDashboard | null>(null)
@@ -261,8 +264,16 @@ export function RunDashboard() {
       const d = await fetchStravaDashboard(token, period)
       setData(d)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Erreur')
       setData(null)
+      // Accès révoqué depuis Strava : l’API vient de délier le compte. Ce n’est
+      // pas une panne — on repasse à l’écran de liaison plutôt qu’à « Réessayer ».
+      if (isStravaUnlinked(e)) {
+        setStravaLinked(false)
+        setStravaRevoked(true)
+        setErr('')
+      } else {
+        setErr(e instanceof Error ? e.message : 'Erreur')
+      }
     } finally {
       setLoading(false)
     }
@@ -323,7 +334,6 @@ export function RunDashboard() {
   const hrRows = barRows.filter((r) => r.avg_hr != null)
   const avgKm = average(barRows.map((r) => r.km))
   const best = barRows.reduce<BarRow | null>((top, r) => (top == null || r.km > top.km ? r : top), null)
-  const activeDays = barRows.filter((r) => r.runs > 0).length
   const trend = weeklyTrend(weeklyRows)
   /** Libellés qui changent avec la maille — évite d’écrire « par semaine » sur 7 jours. */
   const unitWord = isDaily ? 'jour' : 'semaine'
@@ -448,7 +458,11 @@ export function RunDashboard() {
           {!loading && !stravaOffer ? (
             <DashboardLocked reason="offer" capabilities={me.capabilities} />
           ) : !loading && !stravaLinked ? (
-            <DashboardLocked reason="strava" capabilities={me.capabilities} />
+            <DashboardLocked
+              reason="strava"
+              capabilities={me.capabilities}
+              revoked={stravaRevoked}
+            />
           ) : null}
 
           {!loading && data ? (
@@ -461,7 +475,6 @@ export function RunDashboard() {
                   value={formatNumber(data.total_km, data.total_km >= 100 ? 0 : 1)}
                   unit="km"
                   delta={trend}
-                  hint={barRows.length > 1 ? `${formatNumber(avgKm, 1)} km par ${unitWord} en moyenne` : undefined}
                   footer={
                     barRows.length > 2 ? (
                       <Sparkline
@@ -476,22 +489,10 @@ export function RunDashboard() {
                   label="Temps de course"
                   value={duration.value}
                   unit={duration.unit}
-                  hint={
-                    barRows.length > 1
-                      ? `${splitDuration(average(barRows.map((r) => r.hours))).value} par ${unitWord}`
-                      : undefined
-                  }
                 />
                 <StatTile
                   label="Sorties"
                   value={formatNumber(data.runs_total)}
-                  hint={
-                    isDaily
-                      ? `${activeDays} jour${activeDays > 1 ? 's' : ''} avec sortie sur ${barRows.length}`
-                      : barRows.length > 1
-                        ? `${formatNumber(average(barRows.map((r) => r.runs)), 1)} par semaine`
-                        : undefined
-                  }
                 />
                 <StatTile
                   label="Allure moyenne"

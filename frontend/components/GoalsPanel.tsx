@@ -1,9 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { FormEvent, useCallback, useEffect, useState } from 'react'
-import type { Goal } from '@/lib/api'
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { GoalTrainingCalendar } from '@/components/GoalTrainingCalendar'
+import { GoalDetailHeader } from '@/components/goals/GoalDetailHeader'
+import { GoalGuidance } from '@/components/goals/GoalGuidance'
+import { GoalProgram } from '@/components/goals/GoalProgram'
+import { GoalTabs, type GoalTabId } from '@/components/goals/GoalTabs'
+import { ProgressRing } from '@/components/ProgressRing'
 import { SimplePlanBody } from '@/components/SimplePlanBody'
 import {
   CreateGoalCta,
@@ -12,7 +16,19 @@ import {
   GoalsEmptyState,
   WizardSteps,
 } from '@/components/goals/GoalPieces'
-import { createGoal, deleteGoal, fetchMe, getGoal, goalChat, listGoals, previewGoalFeasibility } from '@/lib/api'
+import {
+  createGoalStreaming,
+  deleteGoal,
+  fetchMe,
+  getGoal,
+  goalChat,
+  listGoals,
+  previewGoalFeasibility,
+  replanGoalWithStravaStreaming,
+  type Goal,
+  type GoalCoachAction,
+  type PlanProgress,
+} from '@/lib/api'
 import { getToken } from '@/lib/auth'
 import { distanceAccent, goalTimeline } from '@/lib/goalStats'
 
@@ -111,9 +127,18 @@ export function GoalsPanel() {
   const [goalChatInput, setGoalChatInput] = useState('')
   const [goalChatBusy, setGoalChatBusy] = useState(false)
   const [goalChatErr, setGoalChatErr] = useState('')
+  /** Modifications que le coach vient d'appliquer au plan ou au calendrier. */
+  const [coachActions, setCoachActions] = useState<GoalCoachAction[]>([])
+  const coachThreadRef = useRef<HTMLDivElement | null>(null)
   const [goalDeleteBusy, setGoalDeleteBusy] = useState(false)
   const [goalDeleteErr, setGoalDeleteErr] = useState('')
+  const [goalReplanBusy, setGoalReplanBusy] = useState(false)
+  const [goalReplanErr, setGoalReplanErr] = useState('')
+  /** Avancement rapporté par l'API pendant la génération — des faits, pas une estimation. */
+  const [replanProgress, setReplanProgress] = useState<PlanProgress | null>(null)
+  const [createProgress, setCreateProgress] = useState<PlanProgress | null>(null)
   const [stravaLinked, setStravaLinked] = useState<boolean | null>(null)
+  const [tab, setTab] = useState<GoalTabId>('program')
   const authToken = getToken()
 
   const refresh = useCallback(async () => {
@@ -151,9 +176,11 @@ export function GoalsPanel() {
   }, [refresh])
 
   useEffect(() => {
+    setTab('program')
     setGoalChatInput('')
     setGoalChatErr('')
     setGoalDeleteErr('')
+    setCoachActions([])
     const token = getToken()
     if (token) {
       void fetchMe(token)
@@ -161,6 +188,13 @@ export function GoalsPanel() {
         .catch(() => {})
     }
   }, [selectedId])
+
+  /** La réponse du coach arrive en bas du fil : c'est elle qu'on veut voir. */
+  useEffect(() => {
+    if (tab !== 'coach') return
+    const el = coachThreadRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [tab, detail?.coach_thread?.length])
 
   useEffect(() => {
     if (!selectedId) {
@@ -203,6 +237,36 @@ export function GoalsPanel() {
     }
   }
 
+  /**
+   * Réécrit le plan avec les sorties Strava. Nécessaire pour un objectif créé avant
+   * l'association : son plan est un texte figé, qui garde sinon ses réserves
+   * « sans historique importé » alors que les données sont désormais disponibles.
+   */
+  async function onReplanWithStrava() {
+    const token = getToken()
+    if (!token || !detail?.id || goalReplanBusy) return
+    if (
+      !window.confirm(
+        'Recalculer le plan à partir de tes sorties Strava ? Le plan actuel sera remplacé. Ton objectif, ton nombre de séances et ta discussion avec le coach sont conservés.',
+      )
+    ) {
+      return
+    }
+    setGoalReplanBusy(true)
+    setGoalReplanErr('')
+    setReplanProgress(null)
+    try {
+      const g = await replanGoalWithStravaStreaming(token, detail.id, setReplanProgress)
+      setDetail(g)
+      await refresh()
+    } catch (er) {
+      setGoalReplanErr(er instanceof Error ? er.message : 'Recalcul impossible')
+    } finally {
+      setGoalReplanBusy(false)
+      setReplanProgress(null)
+    }
+  }
+
   async function onGoalChatSubmit(e: FormEvent) {
     e.preventDefault()
     const token = getToken()
@@ -210,10 +274,12 @@ export function GoalsPanel() {
     setGoalChatErr('')
     setGoalChatBusy(true)
     try {
-      await goalChat(token, detail.id, goalChatInput.trim())
+      const { goal, actions } = await goalChat(token, detail.id, goalChatInput.trim())
       setGoalChatInput('')
-      const g = await getGoal(token, detail.id)
-      setDetail(g)
+      setCoachActions(actions)
+      // Le coach a pu déplacer des séances : on repart de l'objectif qu'il renvoie,
+      // sinon l'affichage décrirait le calendrier d'avant sa réponse.
+      setDetail(goal ?? (await getGoal(token, detail.id)))
       await refresh()
     } catch (er) {
       setGoalChatErr(er instanceof Error ? er.message : 'Erreur')
@@ -282,13 +348,18 @@ export function GoalsPanel() {
     if (!token) return
     setErr('')
     setSubmitting(true)
+    setCreateProgress(null)
     try {
-      const g = await createGoal(token, {
-        distance_km: distKm,
-        weeks,
-        sessions_per_week: sessions,
-        target_time: targetTime.trim(),
-      })
+      const g = await createGoalStreaming(
+        token,
+        {
+          distance_km: distKm,
+          weeks,
+          sessions_per_week: sessions,
+          target_time: targetTime.trim(),
+        },
+        setCreateProgress,
+      )
       setWizardOpen(false)
       await refresh()
       setSelectedId(g.id)
@@ -297,6 +368,7 @@ export function GoalsPanel() {
       setErr(e instanceof Error ? e.message : 'Erreur')
     } finally {
       setSubmitting(false)
+      setCreateProgress(null)
     }
   }
 
@@ -473,18 +545,34 @@ export function GoalsPanel() {
             <p className="text-[11px] leading-4 text-white/30">
               La génération du plan détaillé (semaine par semaine) complète cet avis. Compte jusqu’à une minute.
             </p>
-            <button
-              type="button"
-              className="btn-brand w-full"
-              onClick={() => void submitWizard()}
-              disabled={
-                submitting ||
-                feasibilityLoading ||
-                (!feasibilityErr && !feasibilityText && !feasibilityLoading)
-              }
-            >
-              {submitting ? 'Génération…' : 'Générer le plan'}
-            </button>
+            {submitting ? (
+              <div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3.5">
+                <ProgressRing
+                  done={createProgress?.done ?? 0}
+                  total={createProgress?.total ?? 1}
+                  label="Génération du plan"
+                  color="#fc4c02"
+                />
+                <div className="min-w-0">
+                  <p className="text-[14px] font-medium text-white/92">Génération du plan…</p>
+                  <p className="mt-0.5 text-[12px] text-white/45">
+                    {createProgress?.label || 'Le coach prépare ta préparation.'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn-brand w-full"
+                onClick={() => void submitWizard()}
+                disabled={
+                  feasibilityLoading ||
+                  (!feasibilityErr && !feasibilityText && !feasibilityLoading)
+                }
+              >
+                Générer le plan
+              </button>
+            )}
           </div>
         ) : null}
       </div>
@@ -498,8 +586,14 @@ export function GoalsPanel() {
     .filter((t) => !t.finished && t.daysLeft != null)
     .reduce<number | null>((min, t) => (min == null || t.daysLeft! < min ? t.daysLeft! : min), null)
 
+  const hasDetail = detail != null
+
   const listAside = (
-    <aside className={`w-full shrink-0 space-y-3 ${detail ? 'lg:w-72 xl:w-80' : 'lg:w-96'}`}>
+    <aside
+      className={`w-full shrink-0 space-y-3 lg:sticky lg:top-4 lg:self-start ${
+        hasDetail ? 'hidden lg:block lg:w-[300px] xl:w-[330px]' : 'lg:w-[420px]'
+      }`}
+    >
       <CreateGoalCta onClick={openWizard} />
 
       {goals.length > 0 ? (
@@ -511,7 +605,7 @@ export function GoalsPanel() {
       ) : goals.length === 0 ? (
         <GoalsEmptyState />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 lg:max-h-[calc(100dvh-19rem)] lg:overflow-y-auto lg:pr-1">
           {goals.map((g) => (
             <GoalCard
               key={g.id}
@@ -525,138 +619,240 @@ export function GoalsPanel() {
     </aside>
   )
 
-  return (
+  const stravaNotice = detail?.plan_without_strava_data ? (
+    stravaLinked ? (
+      <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.08] p-4 text-[13px] leading-relaxed text-emerald-100/95">
+        <p className="max-w-[70ch]">
+          Strava est associé, mais ce plan a été écrit{' '}
+          <span className="font-medium text-white">avant</span> : ses repères ne tiennent pas compte
+          de tes sorties.
+        </p>
+        {goalReplanBusy ? (
+          <div className="mt-3 flex items-center gap-3">
+            <ProgressRing
+              done={replanProgress?.done ?? 0}
+              total={replanProgress?.total ?? 1}
+              label="Recalcul du plan"
+            />
+            <div className="min-w-0">
+              <p className="font-medium text-white">Chargement…</p>
+              <p className="mt-0.5 text-emerald-100/70">
+                {replanProgress?.label || 'Le coach relit tes sorties.'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn-quiet mt-3 min-h-[44px] border-emerald-400/30 text-[13px] text-emerald-50 hover:border-emerald-400/50 hover:bg-emerald-400/10"
+            onClick={() => void onReplanWithStrava()}
+          >
+            Recalculer avec mes sorties Strava
+          </button>
+        )}
+        {goalReplanErr ? <p className="mt-2 text-red-200/90">{goalReplanErr}</p> : null}
+      </div>
+    ) : (
+      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4 text-[13px] leading-relaxed text-white/70">
+        Ce plan s’appuie sur ton objectif (sans historique Strava).{' '}
+        <Link
+          href="/link-strava/"
+          className="font-medium text-brand-ice/90 underline decoration-white/15 underline-offset-2 hover:text-white"
+        >
+          Associer Strava
+        </Link>{' '}
+        permet d’aligner conseils et calendrier sur tes sorties réelles.
+      </div>
+    )
+  ) : null
+
+  const programPanel = detail ? (
     <div
-      className={`mx-auto flex w-full flex-col gap-5 px-safe py-5 sm:gap-6 sm:py-6 lg:flex-row lg:items-start ${
-        detail ? 'max-w-[min(100%,1520px)]' : 'max-w-3xl'
-      }`}
+      role="tabpanel"
+      id="goal-panel-program"
+      aria-labelledby="goal-tab-program"
+      className="panel p-4 sm:p-5"
     >
+      <GoalProgram goal={detail} />
+    </div>
+  ) : null
+
+  const guidancePanel = detail ? (
+    <div
+      role="tabpanel"
+      id="goal-panel-guidance"
+      aria-labelledby="goal-tab-guidance"
+      className="panel p-4 sm:p-5"
+    >
+      <GoalGuidance plan={detail.plan} />
+    </div>
+  ) : null
+
+  const calendarPanel = detail && authToken ? (
+    <div
+      role="tabpanel"
+      id="goal-panel-calendar"
+      aria-labelledby="goal-tab-calendar"
+      className="panel p-4 sm:p-5"
+    >
+      <GoalTrainingCalendar
+        goalId={detail.id}
+        token={authToken}
+        plan={detail.plan}
+        planStamp={JSON.stringify([
+          detail.sessions_per_week,
+          detail.weeks,
+          detail.planned_sessions?.length ?? 0,
+          detail.plan?.length ?? 0,
+          detail.calendar_day_offsets ?? null,
+          detail.session_overrides ?? null,
+          detail.unavailabilities ?? null,
+        ])}
+      />
+    </div>
+  ) : null
+
+  const coachPanel = detail ? (
+    // Hauteur bornée dès le mobile : sans elle, le panneau s'étire à la taille du fil,
+    // la zone de messages ne défile plus par elle-même, et le champ de saisie se
+    // retrouve sous toute la conversation.
+    <div
+      role="tabpanel"
+      id="goal-panel-coach"
+      aria-labelledby="goal-tab-coach"
+      className="panel flex h-[calc(100dvh-12rem)] max-h-[46rem] min-h-[24rem] flex-col p-4 sm:p-6 lg:h-[calc(100dvh-18rem)]"
+    >
+      <div className="shrink-0">
+        <h3 className="font-display text-[15px] font-semibold text-white">Discussion avec le coach</h3>
+        <p className="mt-1 max-w-[70ch] text-[12px] leading-[17px] text-white/40">
+          Ton ressenti, une douleur, un jour qui ne va plus, une période sans course : le coach ajuste
+          lui-même ton calendrier.
+        </p>
+      </div>
+      {goalChatErr ? <p className="mt-2 shrink-0 text-[13px] text-red-200/90">{goalChatErr}</p> : null}
+
+      {coachActions.length > 0 ? (
+        <div className="mt-2.5 flex shrink-0 items-start gap-2 rounded-xl border border-brand-ice/25 bg-brand-ice/[0.07] px-3 py-2 text-[12px] leading-[17px] text-white/85">
+          <div className="min-w-0 flex-1">
+            <span className="font-medium text-white">Plan mis à jour · </span>
+            <span className="text-white/70">{coachActions.map((a) => a.label).join(' · ')}</span>
+            <button
+              type="button"
+              className="ml-1.5 font-semibold text-brand-ice/90 underline decoration-brand-ice/30 underline-offset-2 transition hover:text-white"
+              onClick={() => setTab('calendar')}
+            >
+              voir le calendrier
+            </button>
+          </div>
+          <button
+            type="button"
+            aria-label="Masquer le récapitulatif"
+            className="-mr-1 shrink-0 px-1 text-white/35 transition hover:text-white/80"
+            onClick={() => setCoachActions([])}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
+      <div ref={coachThreadRef} className="mt-3 min-h-[10rem] flex-1 space-y-3 overflow-y-auto pr-1">
+        {(detail.coach_thread ?? []).length === 0 ? (
+          <p className="text-[13px] text-white/35">Écris un premier message pour ouvrir la discussion.</p>
+        ) : null}
+        {(detail.coach_thread ?? []).map((m, i) => (
+          <div
+            key={`${m.role}-${i}-${m.created_at}`}
+            className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            <div
+              className={`max-w-[min(100%,62ch)] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${
+                m.role === 'user'
+                  ? 'bg-gradient-to-br from-brand-orange/25 to-brand-deep/20 text-white'
+                  : 'border border-white/[0.08] bg-surface-2/80 text-white/88'
+              }`}
+            >
+              {m.role === 'assistant' ? (
+                <SimplePlanBody
+                  text={m.text}
+                  className="!space-y-0.5 [&_h4]:mt-3 [&_h4]:pb-1 [&_h4]:text-sm [&_h5]:mt-2 [&_h5]:text-xs"
+                />
+              ) : (
+                <p className="whitespace-pre-wrap">{m.text}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Collé au bas de la zone visible : le champ reste atteignable même quand le
+          panneau déborde de l'écran, sans avoir à faire défiler la page. */}
+      <form
+        className="sticky bottom-0 -mx-4 mt-4 flex shrink-0 flex-col gap-2 border-t border-white/[0.06] bg-[rgba(18,21,31,0.96)] px-4 pb-2 pt-4 backdrop-blur-xl sm:-mx-6 sm:flex-row sm:px-6"
+        onSubmit={onGoalChatSubmit}
+      >
+        <label htmlFor="goal-coach-input" className="sr-only">
+          Message au coach
+        </label>
+        <input
+          id="goal-coach-input"
+          className="field min-h-[44px] min-w-0 flex-1 border-white/[0.08] bg-surface-2/80 text-[15px]"
+          placeholder="Ex. J’ai mal au genou depuis hier…"
+          value={goalChatInput}
+          onChange={(e) => setGoalChatInput(e.target.value)}
+          disabled={goalChatBusy}
+          autoComplete="off"
+        />
+        <button
+          type="submit"
+          className="btn-brand min-h-[44px] shrink-0 px-6"
+          disabled={goalChatBusy || !goalChatInput.trim()}
+        >
+          {goalChatBusy ? 'Envoi…' : 'Envoyer'}
+        </button>
+      </form>
+    </div>
+  ) : null
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 px-safe py-5 sm:gap-6 sm:py-6 lg:flex-row lg:items-start">
       {listAside}
+
       <main className="min-w-0 flex-1">
         {!detail ? (
           goals.length > 0 ? (
-            <div className="app-empty">
+            <div className="app-empty hidden lg:flex">
               <p className="text-base font-semibold text-white/92">Aucun objectif sélectionné</p>
-              <p className="mx-auto mt-1.5 max-w-[280px] text-[13px] leading-[19px] text-white/38">
-                Choisis un objectif dans la liste pour voir son plan, son calendrier et la discussion coach.
+              <p className="mx-auto mt-1.5 max-w-[320px] text-[13px] leading-[19px] text-white/38">
+                Choisis un objectif dans la liste pour voir son plan, son calendrier et la discussion
+                avec le coach.
               </p>
             </div>
           ) : null
         ) : (
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:gap-5">
-            {/* Colonne plan : tuile « détail » puis tuile « calendrier » (scrolls séparés) */}
-            <div className="flex w-full min-w-0 flex-col gap-5 sm:gap-6 lg:w-[min(100%,440px)] lg:shrink-0 xl:w-[min(100%,480px)]">
-              <article className="panel flex min-h-0 w-full flex-col p-4 sm:p-6 lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto">
-                <header className="flex flex-col gap-3 border-b border-white/[0.06] pb-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <h3 className="font-display text-lg font-semibold text-white">{detail.distance_label}</h3>
-                    <p className="mt-1 text-xs text-white/45">
-                      {detail.target_time ? (
-                        <>
-                          Chrono visé : <span className="text-white/70">{detail.target_time}</span>
-                          <span className="text-white/25"> · </span>
-                        </>
-                      ) : null}
-                      {detail.weeks} semaine(s) · {detail.sessions_per_week} séance(s)/semaine · créé le{' '}
-                      {new Date(detail.created_at).toLocaleDateString('fr-FR')}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-quiet shrink-0 border-red-500/25 py-2 text-xs text-red-200/95 hover:border-red-500/40 hover:bg-red-500/10 disabled:opacity-50"
-                    disabled={goalDeleteBusy}
-                    onClick={() => void onDeleteGoal()}
-                  >
-                    {goalDeleteBusy ? 'Suppression…' : 'Supprimer l’objectif'}
-                  </button>
-                </header>
-                {goalDeleteErr ? (
-                  <p className="mt-3 text-sm text-red-200/90">{goalDeleteErr}</p>
-                ) : null}
-                {detail.plan_without_strava_data ? (
-                  stravaLinked ? (
-                    <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-2.5 text-xs leading-relaxed text-emerald-100/95">
-                      Strava est associé : tu peux écrire au coach pour <span className="font-medium text-white">adapter ton objectif ou le plan</span> selon tes vraies sorties (allure, volume, régularité).
-                    </div>
-                  ) : (
-                    <div className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2.5 text-xs leading-relaxed text-white/70">
-                      Ce plan s’appuie sur ton objectif (sans historique Strava).{' '}
-                      <Link
-                        href="/link-strava/"
-                        className="font-medium text-brand-ice/90 underline decoration-white/15 underline-offset-2 hover:text-white"
-                      >
-                        Associer Strava
-                      </Link>{' '}
-                      permet d’aligner conseils et calendrier sur tes sorties réelles.
-                    </div>
-                  )
-                ) : null}
-                <SimplePlanBody text={detail.plan} className="mt-5 min-w-0 flex-1" />
-              </article>
-
-              {authToken ? (
-                <article className="panel flex min-h-[14rem] min-w-0 max-h-[min(70dvh,42rem)] flex-col overflow-hidden p-4 sm:min-h-[16rem] sm:p-6 lg:max-h-[calc(100dvh-10rem)]">
-                  <GoalTrainingCalendar
-                    goalId={detail.id}
-                    token={authToken}
-                    planStamp={`${detail.sessions_per_week}-${detail.weeks}-${detail.planned_sessions?.length ?? 0}-${detail.plan?.length ?? 0}`}
-                  />
-                </article>
-              ) : null}
-            </div>
-
-            {/* Coach : prend le reste de la largeur — bulles IA plus larges, zone de scroll plus haute */}
-            <section className="panel flex min-h-0 w-full min-w-0 flex-1 flex-col p-4 sm:p-6 lg:max-h-[calc(100dvh-9rem)]">
-              <h4 className="font-display text-sm font-semibold text-white">Discussion avec le coach</h4>
-              <p className="mt-1.5 text-xs leading-relaxed text-white/45">
-                Partage ton ressenti (énergie, sommeil, stress), des douleurs ou une gêne, ou demande à alléger ou
-                ajuster le chrono / le nombre de séances.
+          <div className="space-y-4 sm:space-y-5">
+            <GoalDetailHeader
+              goal={detail}
+              onBack={() => setSelectedId(null)}
+              onDelete={() => void onDeleteGoal()}
+              deleting={goalDeleteBusy}
+            />
+            {goalDeleteErr ? (
+              <p className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] text-red-100">
+                {goalDeleteErr}
               </p>
-              {goalChatErr ? (
-                <p className="mt-2 text-xs text-red-200/90">{goalChatErr}</p>
-              ) : null}
-              <div className="mt-4 min-h-[12rem] flex-1 space-y-3 overflow-y-auto pr-1 lg:min-h-0">
-                {(detail.coach_thread ?? []).length === 0 ? (
-                  <p className="text-xs text-white/35">Écris un premier message pour ouvrir la discussion.</p>
-                ) : null}
-                {(detail.coach_thread ?? []).map((m, i) => (
-                  <div
-                    key={`${m.role}-${i}-${m.created_at}`}
-                    className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[min(100%,720px)] rounded-2xl px-3 py-2 text-sm ${
-                        m.role === 'user'
-                          ? 'bg-gradient-to-br from-brand-orange/25 to-brand-deep/20 text-white'
-                          : 'border border-white/[0.08] bg-surface-2/80 text-white/88'
-                      }`}
-                    >
-                      {m.role === 'assistant' ? (
-                        <SimplePlanBody
-                          text={m.text}
-                          className="!space-y-0.5 [&_h4]:mt-3 [&_h4]:pb-1 [&_h4]:text-sm [&_h5]:mt-2 [&_h5]:text-xs"
-                        />
-                      ) : (
-                        <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <form className="mt-4 shrink-0 flex flex-col gap-2 border-t border-white/[0.06] pt-4 sm:flex-row" onSubmit={onGoalChatSubmit}>
-                <input
-                  className="field min-w-0 flex-1 border-white/[0.08] bg-surface-2/80 py-2.5 text-sm"
-                  placeholder="Ex. J’ai mal au genou depuis hier…"
-                  value={goalChatInput}
-                  onChange={(e) => setGoalChatInput(e.target.value)}
-                  disabled={goalChatBusy}
-                  autoComplete="off"
-                />
-                <button type="submit" className="btn-brand shrink-0 px-5 py-2.5 sm:self-stretch" disabled={goalChatBusy || !goalChatInput.trim()}>
-                  {goalChatBusy ? 'Envoi…' : 'Envoyer'}
-                </button>
-              </form>
-            </section>
+            ) : null}
+
+            {stravaNotice}
+
+            <GoalTabs active={tab} onChange={setTab} />
+
+            {tab === 'program'
+              ? programPanel
+              : tab === 'guidance'
+                ? guidancePanel
+                : tab === 'calendar'
+                  ? calendarPanel
+                  : coachPanel}
           </div>
         )}
       </main>

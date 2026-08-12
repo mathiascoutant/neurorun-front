@@ -17,6 +17,11 @@ function apiBase(): string {
 
 const API = apiBase();
 
+function apiErrorCode(data: unknown): string {
+  const obj = data as { code?: string } | null;
+  return typeof obj?.code === "string" ? obj.code : "";
+}
+
 function apiErrorMessage(res: Response, text: string, data: unknown): string {
   const obj = data as { error?: string } | null;
   const fromJson = typeof obj?.error === "string" ? obj.error : "";
@@ -37,12 +42,23 @@ function apiErrorMessage(res: Response, text: string, data: unknown): string {
 /** Erreur HTTP API avec statut (permet de distinguer 401 et panne réseau). */
 export class ApiError extends Error {
   readonly status: number;
+  /** Code métier renvoyé par l’API (ex. `strava_unlinked`), quand elle en donne un. */
+  readonly code: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code = "") {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
+}
+
+/**
+ * L’accès Strava a été révoqué depuis le compte Strava : l’API a effacé l’association.
+ * Rien à réessayer — il faut proposer de réassocier le compte.
+ */
+export function isStravaUnlinked(e: unknown): boolean {
+  return e instanceof ApiError && e.code === "strava_unlinked";
 }
 
 export type MeCapabilities = {
@@ -121,7 +137,7 @@ export async function api<T>(
     data = { error: text };
   }
   if (!res.ok) {
-    throw new ApiError(apiErrorMessage(res, text, data), res.status);
+    throw new ApiError(apiErrorMessage(res, text, data), res.status, apiErrorCode(data));
   }
   return data as T;
 }
@@ -726,6 +742,8 @@ export type RaceLegForecast = {
 export type RaceForecastPayload = {
   legs: RaceLegForecast[];
   runs_analyzed: number;
+  /** Séances de fractionné écartées : leur moyenne ne mesure pas une performance. */
+  intervals_excluded?: number;
   generated_at: string;
   /** Profondeur d’historique réellement prise en compte. */
   window_days?: number;
@@ -740,6 +758,8 @@ function normalizeConfidence(v: unknown): ForecastConfidence {
 function normalizeRaceForecastPayload(d: RaceForecastPayload): RaceForecastPayload {
   return {
     runs_analyzed: typeof d.runs_analyzed === "number" ? d.runs_analyzed : 0,
+    intervals_excluded:
+      typeof d.intervals_excluded === "number" ? d.intervals_excluded : undefined,
     generated_at: d.generated_at == null ? "" : String(d.generated_at),
     window_days: typeof d.window_days === "number" ? d.window_days : undefined,
     longest_run_km: typeof d.longest_run_km === "number" ? d.longest_run_km : undefined,
@@ -927,6 +947,22 @@ export type PlannedSession = {
   summary?: string;
 };
 
+/** Report ou annulation d'une séance décidé avec le coach. */
+export type SessionOverride = {
+  week: number;
+  session: number;
+  date?: string;
+  skipped?: boolean;
+  reason?: string;
+};
+
+/** Période sans course (maladie, déplacement…) : les séances y sont décalées. */
+export type GoalUnavailability = {
+  from: string;
+  to: string;
+  reason?: string;
+};
+
 export type Goal = {
   id: string;
   distance_km: number;
@@ -940,6 +976,8 @@ export type Goal = {
   planned_sessions?: PlannedSession[];
   /** Jours 0=lun…6=dim (optionnel ; sinon motif serveur par défaut). */
   calendar_day_offsets?: number[];
+  session_overrides?: SessionOverride[];
+  unavailabilities?: GoalUnavailability[];
   coach_thread?: GoalCoachTurn[];
   created_at: string;
 };
@@ -951,15 +989,26 @@ export type GoalCalendarItem = {
   summary: string;
   planned_km: number;
   target_pace_sec_per_km?: number | null;
-  status: "upcoming" | "done" | "partial" | "missed";
+  status: "upcoming" | "done" | "partial" | "missed" | "skipped";
+  /** La séance n'est pas au jour habituel (report demandé ou indisponibilité). */
+  rescheduled?: boolean;
+  /** Jour d'origine, présent seulement si la séance a bougé. */
+  planned_date?: string;
+  /** Motif du report ou de l'annulation. */
+  reason?: string;
   strava_activity_id?: number | null;
   actual_km?: number | null;
   actual_pace_sec_per_km?: number | null;
+  /** Séance à intervalles : `actual_pace_sec_per_km` inclut les récupérations. */
+  is_interval?: boolean;
+  /** Allure des seuls efforts (s/km) : c'est elle qui est comparée à la cible. */
+  effort_pace_sec_per_km?: number | null;
 };
 
 export type GoalCalendarResponse = {
   timezone: string;
   items: GoalCalendarItem[];
+  unavailabilities?: GoalUnavailability[] | null;
 };
 
 function normalizeCoachThread(raw: Goal["coach_thread"]): GoalCoachTurn[] {
@@ -970,6 +1019,16 @@ function normalizeCoachThread(raw: Goal["coach_thread"]): GoalCoachTurn[] {
   }));
 }
 
+function normalizeUnavailabilities(
+  raw: GoalUnavailability[] | null | undefined,
+): GoalUnavailability[] {
+  return asArray(raw).map((u) => ({
+    from: u.from == null ? "" : String(u.from),
+    to: u.to == null ? "" : String(u.to),
+    reason: u.reason == null ? "" : String(u.reason),
+  }));
+}
+
 function normalizeGoal(g: Goal): Goal {
   return {
     ...g,
@@ -977,6 +1036,8 @@ function normalizeGoal(g: Goal): Goal {
     plan: g.plan == null ? "" : String(g.plan),
     plan_without_strava_data: Boolean(g.plan_without_strava_data),
     planned_sessions: asArray(g.planned_sessions as PlannedSession[] | null),
+    session_overrides: asArray(g.session_overrides as SessionOverride[] | null),
+    unavailabilities: normalizeUnavailabilities(g.unavailabilities),
     coach_thread: normalizeCoachThread(g.coach_thread),
   };
 }
@@ -1033,11 +1094,18 @@ export async function getGoalCalendar(token: string, goalId: string) {
       ...it,
       date: it.date == null ? "" : String(it.date),
       status:
-        it.status === "done" || it.status === "partial" || it.status === "missed"
+        it.status === "done" ||
+        it.status === "partial" ||
+        it.status === "missed" ||
+        it.status === "skipped"
           ? it.status
           : "upcoming",
       summary: it.summary == null ? "" : String(it.summary),
+      rescheduled: Boolean(it.rescheduled),
+      planned_date: it.planned_date == null ? "" : String(it.planned_date),
+      reason: it.reason == null ? "" : String(it.reason),
     })) as GoalCalendarItem[],
+    unavailabilities: normalizeUnavailabilities(d.unavailabilities),
   };
 }
 
@@ -1048,16 +1116,170 @@ export async function deleteGoal(token: string, id: string) {
   });
 }
 
+/** Modification du plan ou du calendrier réellement appliquée par le coach. */
+export type GoalCoachAction = {
+  tool: string;
+  label: string;
+};
+
+/**
+ * Envoie un message au coach de l'objectif. Le coach peut agir sur le calendrier
+ * (déplacer un jour, reporter une séance, enregistrer une indisponibilité) : le
+ * `goal` renvoyé est déjà à jour et `actions` liste ce qui a changé.
+ */
 export async function goalChat(token: string, goalId: string, message: string) {
-  const d = await api<{ reply: string }>(
-    `/api/goals/${encodeURIComponent(goalId)}/chat`,
-    {
-      method: "POST",
-      token,
-      body: JSON.stringify({ message }),
-    },
+  const d = await api<{
+    reply: string;
+    goal?: Goal | null;
+    actions?: GoalCoachAction[] | null;
+  }>(`/api/goals/${encodeURIComponent(goalId)}/chat`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ message }),
+  });
+  return {
+    reply: d.reply == null ? "" : String(d.reply),
+    goal: d.goal ? normalizeGoal(d.goal) : null,
+    actions: asArray(d.actions)
+      .map((a) => ({
+        tool: a.tool == null ? "" : String(a.tool),
+        label: a.label == null ? "" : String(a.label),
+      }))
+      .filter((a) => a.label !== ""),
+  };
+}
+
+/**
+ * Régénère le plan d'un objectif à partir des sorties Strava. Utile pour un objectif
+ * créé avant l'association du compte : son plan est un texte figé, qui garde sinon
+ * ses réserves « sans historique importé ».
+ */
+export async function replanGoalWithStrava(token: string, goalId: string) {
+  const g = await api<Goal>(`/api/goals/${encodeURIComponent(goalId)}/replan`, {
+    method: "POST",
+    token,
+  });
+  return normalizeGoal(g);
+}
+
+/** Avancement réel d'une génération de plan : `done` unités franchies sur `total`. */
+export type PlanProgress = {
+  done: number;
+  total: number;
+  /** Le dernier fait accompli, en clair (« Semaine 3 sur 8 rédigée »). */
+  label: string;
+};
+
+/**
+ * Appelle une route qui rédige un plan en rendant compte de son avancement (flux
+ * SSE). Chaque événement correspond à un fait : une section écrite, une semaine
+ * rédigée, les séances extraites, l'enregistrement. L'objectif à jour arrive en
+ * dernier.
+ *
+ * On lit le flux avec `fetch` plutôt qu'`EventSource`, qui ne sait pas porter
+ * l'en-tête d'authentification.
+ */
+async function streamPlanRequest(
+  path: string,
+  token: string,
+  onProgress: (p: PlanProgress) => void,
+  body?: unknown,
+): Promise<Goal> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const res = await fetch(`${API}${path}`, {
+    method: "POST",
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    let data: unknown = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+    throw new ApiError(apiErrorMessage(res, text, data), res.status, apiErrorCode(data));
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let goal: Goal | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // Les événements SSE sont séparés par une ligne vide ; un événement coupé en
+    // deux lectures reste dans le tampon jusqu'à être complet.
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const line = part.split("\n").find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      let payload: {
+        step?: string;
+        error?: string;
+        code?: string;
+        goal?: Goal;
+        done?: number;
+        total?: number;
+        label?: string;
+      };
+      try {
+        payload = JSON.parse(line.slice(5).trim());
+      } catch {
+        continue;
+      }
+      if (payload.step === "error") {
+        throw new ApiError(payload.error || "Recalcul impossible", 502, payload.code ?? "");
+      }
+      if (payload.step === "done" && payload.goal) {
+        goal = normalizeGoal(payload.goal);
+        continue;
+      }
+      if (typeof payload.done === "number" && typeof payload.total === "number") {
+        onProgress({
+          done: payload.done,
+          total: payload.total,
+          label: typeof payload.label === "string" ? payload.label : "",
+        });
+      }
+    }
+  }
+
+  if (!goal) {
+    throw new ApiError("Le plan n’a pas été renvoyé — recharge la page pour vérifier", 502);
+  }
+  return goal;
+}
+
+/**
+ * Régénère le plan à partir des sorties Strava, en suivant l'avancement réel de
+ * la rédaction.
+ */
+export function replanGoalWithStravaStreaming(
+  token: string,
+  goalId: string,
+  onProgress: (p: PlanProgress) => void,
+): Promise<Goal> {
+  return streamPlanRequest(
+    `/api/goals/${encodeURIComponent(goalId)}/replan/stream`,
+    token,
+    onProgress,
   );
-  return { reply: d.reply == null ? "" : String(d.reply) };
+}
+
+/** Crée l'objectif et son plan, en suivant l'avancement réel de la rédaction. */
+export function createGoalStreaming(
+  token: string,
+  body: GoalDraftPayload,
+  onProgress: (p: PlanProgress) => void,
+): Promise<Goal> {
+  return streamPlanRequest("/api/goals/stream", token, onProgress, body);
 }
 
 export type LiveRunSplit = {
@@ -1171,6 +1393,27 @@ export type LiveRunDetail = {
   activity_type?: string;
   avg_heartrate?: number;
   max_heartrate?: number;
+  /** Strava : 0 = sortie normale, 1 = course, 2 = sortie longue, 3 = séance. */
+  workout_type?: number;
+  /** Séance à intervalles : l'allure moyenne inclut les récupérations. */
+  is_interval?: boolean;
+  interval_summary?: IntervalSummary | null;
+};
+
+/**
+ * Découpage effort / récupération d'une séance à intervalles, calculé côté API
+ * (tours de montre, sinon flux vitesse, sinon kilomètres). Absent quand les
+ * répétitions ne se détachent pas assez pour être isolées.
+ */
+export type IntervalSummary = {
+  effort_count: number;
+  effort_distance_m: number;
+  effort_sec: number;
+  effort_pace_sec_per_km: number;
+  recovery_distance_m: number;
+  recovery_sec: number;
+  recovery_pace_sec_per_km: number;
+  source: "laps" | "stream" | "splits";
 };
 
 export async function getLiveRun(
@@ -1208,6 +1451,8 @@ export type RunHistoryFeedItem = {
   max_speed_kmh?: number;
   /** Fréquence cardiaque moyenne (bpm), Strava. */
   avg_heartrate?: number;
+  /** Séance à intervalles : `avg_pace_sec_per_km` inclut les récupérations. */
+  is_interval?: boolean;
 };
 
 /**

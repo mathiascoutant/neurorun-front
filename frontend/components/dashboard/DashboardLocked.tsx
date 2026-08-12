@@ -119,12 +119,19 @@ const ALTERNATIVES: {
 export function DashboardLocked({
   reason,
   capabilities,
+  revoked = false,
 }: {
   /** `strava` : l’offre le permet mais le compte n’est pas relié. `offer` : hors offre. */
   reason: 'strava' | 'offer'
   capabilities?: MeCapabilities
+  /**
+   * Le compte était relié et Strava a révoqué l’accès. Même écran, mais il faut
+   * dire ce qui s’est passé : sans ça, redemander l’association paraît absurde.
+   */
+  revoked?: boolean
 }) {
   const isStrava = reason === 'strava'
+  const isRevoked = isStrava && revoked
   const available = ALTERNATIVES.filter((a) => capabilities?.[a.key] !== false)
 
   return (
@@ -158,14 +165,20 @@ export function DashboardLocked({
               </svg>
             </span>
             <h2 className="font-display text-[19px] font-bold tracking-[-0.02em] text-white sm:text-[21px]">
-              {isStrava ? 'Connecte Strava, et tout s’affiche' : 'Ton tableau de bord t’attend'}
+              {isRevoked
+                ? 'L’accès à Strava a été révoqué'
+                : isStrava
+                  ? 'Connecte Strava, et tout s’affiche'
+                  : 'Ton tableau de bord t’attend'}
             </h2>
           </div>
 
           <p className="mt-2.5 max-w-xl text-[14px] leading-relaxed text-white/50">
-            {isStrava
-              ? 'Ton offre inclut le tableau de bord. Il ne manque que la synchronisation : une fois Strava associé, tout ton historique de course remonte automatiquement.'
-              : 'L’analyse de tes sorties n’est pas incluse dans ton offre actuelle. Elle transforme ton historique en repères concrets, sortie après sortie.'}
+            {isRevoked
+              ? 'NeuroRun n’a plus l’autorisation de lire tes sorties : l’accès a été retiré depuis ton compte Strava. Rien n’est perdu — réassocie ton compte et ton historique remonte de nouveau.'
+              : isStrava
+                ? 'Ton offre inclut le tableau de bord. Il ne manque que la synchronisation : une fois Strava associé, tout ton historique de course remonte automatiquement.'
+                : 'L’analyse de tes sorties n’est pas incluse dans ton offre actuelle. Elle transforme ton historique en repères concrets, sortie après sortie.'}
           </p>
 
           <ul className="mt-5 grid gap-2.5 sm:grid-cols-2">
@@ -180,10 +193,14 @@ export function DashboardLocked({
               href={isStrava ? '/link-strava/' : '/profile/'}
               className="btn-brand cursor-pointer px-5 py-3 text-[15px]"
             >
-              {isStrava ? 'Associer Strava' : 'Découvrir les offres'}
+              {isRevoked ? 'Réassocier Strava' : isStrava ? 'Associer Strava' : 'Découvrir les offres'}
             </Link>
             <p className="text-[12px] text-white/35">
-              {isStrava ? 'Prend moins d’une minute, révocable à tout moment.' : 'Sans engagement, résiliable à tout moment.'}
+              {isRevoked
+                ? 'Prend moins d’une minute, et tes données précédentes restent intactes.'
+                : isStrava
+                  ? 'Prend moins d’une minute, révocable à tout moment.'
+                  : 'Sans engagement, résiliable à tout moment.'}
             </p>
           </div>
         </div>

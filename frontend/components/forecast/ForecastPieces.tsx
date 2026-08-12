@@ -211,6 +211,14 @@ export function HeroSummary({ forecast }: { forecast: RaceForecastPayload }) {
         ))}
       </div>
 
+      {forecast.intervals_excluded ? (
+        <p className="mt-3 text-[11px] leading-[15px] text-white/38">
+          {forecast.intervals_excluded === 1
+            ? '1 séance de fractionné écartée du calcul : son allure moyenne compte les récupérations, elle ne mesure pas un chrono.'
+            : `${forecast.intervals_excluded} séances de fractionné écartées du calcul : leur allure moyenne compte les récupérations, elle ne mesure pas un chrono.`}
+        </p>
+      ) : null}
+
       {forecast.generated_at ? (
         <p className="mt-3 text-[11px] text-white/20">Calculé le {fmtGeneratedAt(forecast.generated_at)}</p>
       ) : null}

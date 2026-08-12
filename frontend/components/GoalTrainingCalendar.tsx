@@ -1,46 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import type { GoalCalendarItem } from '@/lib/api'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { GoalSessionDetail } from '@/components/goals/GoalSessionDetail'
+import { GoalSessionsDone } from '@/components/goals/GoalSessionsDone'
+import type { GoalCalendarItem, GoalUnavailability } from '@/lib/api'
 import { getGoalCalendar } from '@/lib/api'
+import {
+  dateKeyFromParts,
+  formatPaceSecPerKm,
+  parseDateKey,
+  planSessionBody,
+  sessionKey,
+  sessionStatusMeta as statusSymbol,
+  todayKeyLocal,
+} from '@/lib/goalSessions'
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'] as const
-
-function formatPaceSecPerKm(sec: number): string {
-  if (!Number.isFinite(sec) || sec <= 0) return '—'
-  const m = Math.floor(sec / 60)
-  const s = Math.round(sec % 60)
-  return `${m}:${s.toString().padStart(2, '0')}/km`
-}
-
-function statusSymbol(status: GoalCalendarItem['status']): { sym: string; label: string; className: string } {
-  switch (status) {
-    case 'done':
-      return { sym: '✓', label: 'Validé (Strava)', className: 'text-emerald-300' }
-    case 'partial':
-      return { sym: '◐', label: 'Partiel — distance OK, allure hors cible (~5 s/km)', className: 'text-amber-200' }
-    case 'missed':
-      return { sym: '✗', label: 'Manqué ou distance trop courte', className: 'text-red-300/90' }
-    default:
-      return { sym: '○', label: 'Prévu', className: 'text-white/40' }
-  }
-}
-
-/** Interprète YYYY-MM-DD comme jour civil local (aligné sur le fuseau du plan). */
-function dateKeyFromParts(y: number, m: number, d: number): string {
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
-
-function parseDateKey(key: string): { y: number; m: number; d: number } | null {
-  const p = key.split('-').map(Number)
-  if (p.length !== 3 || p.some((n) => !Number.isFinite(n))) return null
-  return { y: p[0], m: p[1], d: p[2] }
-}
-
-function todayKeyLocal(): string {
-  const n = new Date()
-  return dateKeyFromParts(n.getFullYear(), n.getMonth() + 1, n.getDate())
-}
 
 type MonthGrid = {
   year: number
@@ -109,12 +84,43 @@ function eachMonthInRange(
   return out
 }
 
+/** Jours couverts par une indisponibilité, motif associé pour l'infobulle. */
+function blockedDayReasons(list: GoalUnavailability[]): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const u of list) {
+    const from = parseDateKey(u.from)
+    const to = parseDateKey(u.to) ?? from
+    if (!from || !to) continue
+    const cur = new Date(from.y, from.m - 1, from.d)
+    const end = new Date(to.y, to.m - 1, to.d)
+    // Garde-fou : une plage aberrante ne doit pas figer le rendu.
+    for (let i = 0; cur <= end && i < 400; i++) {
+      out.set(dateKeyFromParts(cur.getFullYear(), cur.getMonth() + 1, cur.getDate()), u.reason || '')
+      cur.setDate(cur.getDate() + 1)
+    }
+  }
+  return out
+}
+
+/** Ligne d'infobulle expliquant un report ou une annulation, vide sinon. */
+function scheduleChangeNote(it: GoalCalendarItem): string {
+  const reason = it.reason ? ` · ${it.reason}` : ''
+  if (it.rescheduled && it.planned_date) {
+    return `Reportée depuis le ${it.planned_date}${reason}`
+  }
+  if (it.status === 'skipped' && it.reason) {
+    return `Motif : ${it.reason}`
+  }
+  return ''
+}
+
 function sessionTooltip(it: GoalCalendarItem): string {
   const st = statusSymbol(it.status)
   const parts = [
     `S${it.session} · ~${it.planned_km} km`,
     st.label,
     it.summary || '',
+    scheduleChangeNote(it),
   ]
   if (it.target_pace_sec_per_km != null && it.target_pace_sec_per_km > 0) {
     parts.push(`Cible ${formatPaceSecPerKm(it.target_pace_sec_per_km)}`)
@@ -123,23 +129,51 @@ function sessionTooltip(it: GoalCalendarItem): string {
     parts.push(`Strava · ${it.actual_km.toFixed(1)} km`)
   }
   if (it.actual_pace_sec_per_km != null) {
-    parts.push(formatPaceSecPerKm(it.actual_pace_sec_per_km))
+    // Sur un fractionné, la séance est jugée sur l'allure des efforts : afficher
+    // la moyenne seule laisserait croire à une séance trop lente.
+    parts.push(
+      it.is_interval
+        ? `${formatPaceSecPerKm(it.actual_pace_sec_per_km)} de moyenne (récup comprise)`
+        : formatPaceSecPerKm(it.actual_pace_sec_per_km),
+    )
+  }
+  if (it.is_interval) {
+    parts.push(
+      it.effort_pace_sec_per_km != null && it.effort_pace_sec_per_km > 0
+        ? `Fractionné · efforts à ${formatPaceSecPerKm(it.effort_pace_sec_per_km)}`
+        : 'Fractionné · jugé sur les efforts, pas sur la moyenne',
+    )
   }
   return parts.filter(Boolean).join('\n')
 }
 
-type Props = {
-  goalId: string
-  token: string
-  /** Change après régénération du plan côté API pour recharger le calendrier. */
-  planStamp?: string
+function blockedDayTitle(reason: string): string {
+  return reason ? `Indisponible — ${reason}` : 'Indisponible'
 }
 
-export function GoalTrainingCalendar({ goalId, token, planStamp = '' }: Props) {
+function dayNumberColor(isToday: boolean, isBlocked: boolean): string {
+  if (isToday) return 'text-brand-orange/95'
+  if (isBlocked) return 'text-amber-100/60'
+  return 'text-white/65'
+}
+
+type Props = {
+  readonly goalId: string
+  readonly token: string
+  /** Plan Markdown : sert à afficher le détail rédigé d'une séance ouverte. */
+  readonly plan?: string
+  /** Change après modification du plan ou du calendrier côté API pour recharger. */
+  readonly planStamp?: string
+}
+
+export function GoalTrainingCalendar({ goalId, token, plan = '', planStamp = '' }: Props) {
   const [items, setItems] = useState<GoalCalendarItem[]>([])
+  const [unavailabilities, setUnavailabilities] = useState<GoalUnavailability[]>([])
   const [tz, setTz] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const detailRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     let off = false
@@ -150,6 +184,7 @@ export function GoalTrainingCalendar({ goalId, token, planStamp = '' }: Props) {
         const d = await getGoalCalendar(token, goalId)
         if (!off) {
           setItems(d.items)
+          setUnavailabilities(d.unavailabilities ?? [])
           setTz(d.timezone)
         }
       } catch (e) {
@@ -182,6 +217,19 @@ export function GoalTrainingCalendar({ goalId, token, planStamp = '' }: Props) {
     return eachMonthInRange(range.start, range.end).map(({ y, m }) => buildMonthGrid(y, m))
   }, [items])
 
+  const blockedDays = useMemo(() => blockedDayReasons(unavailabilities), [unavailabilities])
+
+  const selected = useMemo(
+    () => items.find((it) => sessionKey(it) === selectedKey) ?? null,
+    [items, selectedKey],
+  )
+
+  // La fiche s'ouvre au-dessus de la grille : sans ça, un clic sur un jour de fin
+  // de préparation ouvrirait un détail hors de l'écran.
+  useEffect(() => {
+    if (selected) detailRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [selected])
+
   const todayK = todayKeyLocal()
 
   if (loading) {
@@ -209,8 +257,9 @@ export function GoalTrainingCalendar({ goalId, token, planStamp = '' }: Props) {
       <h4 className="font-display text-sm font-semibold text-white">Calendrier des séances</h4>
       <p className="mt-1 text-[11px] leading-relaxed text-white/40">
         Comparaison avec tes sorties Strava : distance prévue <span className="text-white/55">minimum</span> (tu peux
-        couvrir plus) ; si une allure cible est indiquée, ±5 s/km sur la moyenne → validé. Fuseau affiché côté serveur :{' '}
-        {tz || '—'} (les dates du plan sont des jours civils).
+        couvrir plus) ; si une allure cible est indiquée, ±5 s/km sur la moyenne → validé.{' '}
+        <span className="text-white/55">Clique une séance</span> pour voir le prévu, le réalisé et l’analyse de la
+        sortie. Fuseau côté serveur : {tz || '—'} (les dates du plan sont des jours civils).
       </p>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-white/45">
         <span>
@@ -225,67 +274,181 @@ export function GoalTrainingCalendar({ goalId, token, planStamp = '' }: Props) {
         <span>
           <span className="text-red-300/90">✗</span> manqué
         </span>
+        <span>
+          <span className="text-white/25">–</span> annulée
+        </span>
+        <span>
+          <span className="text-brand-ice/80">↷</span> reportée
+        </span>
+      </div>
+
+      {unavailabilities.length > 0 ? (
+        <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 text-[11px] leading-relaxed text-amber-100/85">
+          <p className="font-medium text-amber-100">Périodes sans course</p>
+          <ul className="mt-1 space-y-0.5">
+            {unavailabilities.map((u) => (
+              <li key={`${u.from}-${u.to}`}>
+                du {u.from} au {u.to}
+                {u.reason ? ` — ${u.reason}` : ''}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-amber-100/60">
+            Les séances concernées ont été reportées au premier jour disponible suivant.
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-4">
+        <GoalSessionsDone items={items} selectedKey={selectedKey} onSelect={setSelectedKey} />
+      </div>
+
+      <div ref={detailRef} className={selected ? 'mt-3' : ''}>
+        {selected ? (
+          <GoalSessionDetail
+            item={selected}
+            planBody={planSessionBody(plan, selected.week, selected.session)}
+            token={token}
+            onClose={() => setSelectedKey(null)}
+          />
+        ) : null}
       </div>
 
       <div className="mt-4 min-h-0 max-h-[min(62vh,30rem)] flex-1 space-y-6 overflow-y-auto pr-1 lg:max-h-none">
         {months.map((mo) => (
-          <div key={`${mo.year}-${mo.month}`}>
-            <h5 className="mb-2 capitalize font-medium text-white/70">{mo.label}</h5>
-            <div className="grid grid-cols-7 gap-px rounded-lg border border-white/[0.08] bg-white/[0.08] text-center text-[10px] text-white/50 sm:text-xs">
-              {WEEKDAYS.map((wd) => (
-                <div key={wd} className="bg-surface-2/90 py-1.5 font-medium text-white/45">
-                  {wd}
-                </div>
-              ))}
-              {mo.weeks.flatMap((week, wi) =>
-                week.map((cell, ci) => {
-                  const k = `${mo.year}-${mo.month}-${wi}-${ci}`
-                  if (cell == null) {
-                    return <div key={k} className="min-h-[4.25rem] bg-surface-2/50 sm:min-h-[5rem]" />
-                  }
-                  const dayItems = itemsByDate.get(cell.dateKey) ?? []
-                  const isToday = cell.dateKey === todayK
-                  const hasSession = dayItems.length > 0
-                  return (
-                    <div
-                      key={k}
-                      className={`flex min-h-[4.25rem] flex-col items-stretch bg-surface-2/90 p-1 sm:min-h-[5rem] sm:p-1.5 ${
-                        isToday ? 'ring-1 ring-inset ring-brand-orange/35' : ''
-                      } ${hasSession ? 'bg-white/[0.07]' : ''}`}
-                    >
-                      <span
-                        className={`text-left font-mono text-[11px] font-semibold sm:text-xs ${
-                          isToday ? 'text-brand-orange/95' : 'text-white/65'
-                        }`}
-                      >
-                        {cell.day}
-                      </span>
-                      {dayItems.length > 0 ? (
-                        <div className="mt-1 flex flex-col gap-0.5">
-                          {dayItems.map((it) => (
-                            <div
-                              key={`${it.week}-${it.session}-${it.date}`}
-                              className="flex items-center gap-1 rounded-md bg-black/25 px-1 py-0.5 text-left"
-                              title={sessionTooltip(it)}
-                            >
-                              <span className={`shrink-0 text-sm leading-none ${statusSymbol(it.status).className}`}>
-                                {statusSymbol(it.status).sym}
-                              </span>
-                              <span className="min-w-0 truncate text-[10px] leading-tight text-white/70 sm:text-[11px]">
-                                S{it.session} · {it.planned_km} km
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                }),
-              )}
-            </div>
-          </div>
+          <MonthCard
+            key={`${mo.year}-${mo.month}`}
+            month={mo}
+            itemsByDate={itemsByDate}
+            blockedDays={blockedDays}
+            todayKey={todayK}
+            selectedKey={selectedKey}
+            onSelect={setSelectedKey}
+          />
         ))}
       </div>
     </div>
+  )
+}
+
+function MonthCard({
+  month,
+  itemsByDate,
+  blockedDays,
+  todayKey,
+  selectedKey,
+  onSelect,
+}: {
+  readonly month: MonthGrid
+  readonly itemsByDate: Map<string, GoalCalendarItem[]>
+  readonly blockedDays: Map<string, string>
+  readonly todayKey: string
+  readonly selectedKey: string | null
+  readonly onSelect: (key: string) => void
+}) {
+  return (
+    <div>
+      <h5 className="mb-2 capitalize font-medium text-white/70">{month.label}</h5>
+      <div className="grid grid-cols-7 gap-px rounded-lg border border-white/[0.08] bg-white/[0.08] text-center text-[10px] text-white/50 sm:text-xs">
+        {WEEKDAYS.map((wd) => (
+          <div key={wd} className="bg-surface-2/90 py-1.5 font-medium text-white/45">
+            {wd}
+          </div>
+        ))}
+        {month.weeks.flatMap((week, wi) =>
+          week.map((cell, ci) => (
+            <DayCell
+              key={`${month.year}-${month.month}-${wi}-${ci}`}
+              cell={cell}
+              items={cell ? (itemsByDate.get(cell.dateKey) ?? []) : []}
+              blockedReason={cell ? blockedDays.get(cell.dateKey) : undefined}
+              isToday={cell?.dateKey === todayKey}
+              selectedKey={selectedKey}
+              onSelect={onSelect}
+            />
+          )),
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DayCell({
+  cell,
+  items,
+  blockedReason,
+  isToday,
+  selectedKey,
+  onSelect,
+}: {
+  readonly cell: { day: number; dateKey: string } | null
+  readonly items: GoalCalendarItem[]
+  readonly blockedReason: string | undefined
+  readonly isToday: boolean
+  readonly selectedKey: string | null
+  readonly onSelect: (key: string) => void
+}) {
+  if (cell == null) {
+    return <div className="min-h-[4.25rem] bg-surface-2/50 sm:min-h-[5rem]" />
+  }
+  const isBlocked = blockedReason !== undefined
+  return (
+    <div
+      title={isBlocked ? blockedDayTitle(blockedReason) : undefined}
+      className={`flex min-h-[4.25rem] flex-col items-stretch bg-surface-2/90 p-1 sm:min-h-[5rem] sm:p-1.5 ${
+        isToday ? 'ring-1 ring-inset ring-brand-orange/35' : ''
+      } ${items.length > 0 ? 'bg-white/[0.07]' : ''} ${isBlocked ? 'bg-amber-400/[0.09]' : ''}`}
+    >
+      <span
+        className={`text-left font-mono text-[11px] font-semibold sm:text-xs ${dayNumberColor(isToday, isBlocked)}`}
+      >
+        {cell.day}
+      </span>
+      {items.length > 0 ? (
+        <div className="mt-1 flex flex-col gap-0.5">
+          {items.map((it) => (
+            <SessionChip
+              key={sessionKey(it)}
+              item={it}
+              selected={selectedKey === sessionKey(it)}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function SessionChip({
+  item,
+  selected,
+  onSelect,
+}: {
+  readonly item: GoalCalendarItem
+  readonly selected: boolean
+  readonly onSelect: (key: string) => void
+}) {
+  const st = statusSymbol(item.status)
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={() => onSelect(sessionKey(item))}
+      title={sessionTooltip(item)}
+      className={`flex items-center gap-1 rounded-md px-1 py-0.5 text-left transition hover:bg-black/45 focus:outline-none focus-visible:ring-1 focus-visible:ring-brand-orange/60 ${
+        selected ? 'bg-brand-ice/20 ring-1 ring-brand-ice/40' : 'bg-black/25'
+      } ${item.status === 'skipped' ? 'opacity-50 line-through decoration-white/30' : ''}`}
+    >
+      <span className={`shrink-0 text-sm leading-none ${st.className}`}>{st.sym}</span>
+      <span className="min-w-0 truncate text-[10px] leading-tight text-white/70 sm:text-[11px]">
+        S{item.session} · {item.planned_km} km
+      </span>
+      {item.rescheduled ? (
+        <span className="shrink-0 text-[11px] leading-none text-brand-ice/80" aria-hidden>
+          ↷
+        </span>
+      ) : null}
+    </button>
   )
 }

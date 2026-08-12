@@ -1,4 +1,9 @@
-import type { LiveRunDetail, LiveRunSplit, LiveRunTrackPoint } from "./api";
+import type {
+  IntervalSummary,
+  LiveRunDetail,
+  LiveRunSplit,
+  LiveRunTrackPoint,
+} from "./api";
 import { elevationSummary, isUsableAltitude } from "./elevation";
 
 /**
@@ -90,9 +95,25 @@ export type RunMetrics = {
   splits: SplitRow[];
   /** Écart d'allure entre seconde et première moitié : < 0 = accélération finale. */
   negativeSplitSec: number | null;
+  /**
+   * Séance à intervalles (fractionné) d'après Strava. L'allure moyenne, la
+   * régularité au km et le negative split n'y décrivent pas la séance : les
+   * récupérations les tirent vers le bas alors qu'elles sont voulues.
+   */
+  isInterval: boolean;
+  /** Découpage effort / récupération, quand l'API a su l'établir. */
+  intervals: IntervalSummary | null;
   trackPointCount: number;
   hasTrack: boolean;
 };
+
+/** Le résumé n'est exploitable que s'il porte une allure d'effort mesurée. */
+function usableIntervals(s: IntervalSummary | null | undefined): IntervalSummary | null {
+  if (s == null) return null;
+  if (!Number.isFinite(s.effort_pace_sec_per_km) || s.effort_pace_sec_per_km <= 0) return null;
+  if (!Number.isFinite(s.effort_count) || s.effort_count < 2) return null;
+  return s;
+}
 
 export function readHrBpm(p: LiveRunTrackPoint): number | undefined {
   const h = p.hr_bpm as unknown;
@@ -357,6 +378,8 @@ export function buildRunMetrics(
     hrMaxRefEstimated,
     splits,
     negativeSplitSec: negativeSplitSec != null ? Math.round(negativeSplitSec) : null,
+    isInterval: run.is_interval === true,
+    intervals: usableIntervals(run.interval_summary),
     trackPointCount: track.length,
     hasTrack: track.length > 0,
   };
