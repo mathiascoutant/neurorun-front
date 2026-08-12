@@ -54,6 +54,14 @@ function fmtSignedSec(sec: number): string {
   return `${sec < 0 ? "−" : "+"}${body}`;
 }
 
+/**
+ * Ponctuation française : espace insécable avant les signes doubles, sinon le
+ * navigateur peut renvoyer un « : » ou un « % » seul en début de ligne.
+ */
+function frenchSpacing(text: string): string {
+  return text.replace(/ ([:;!?%])/g, "\u00a0$1");
+}
+
 function fmtClockShort(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
@@ -70,68 +78,200 @@ const ZONE_COLORS: Record<number, string> = {
 
 /* ----------------------------------------------------------- synthèse texte */
 
-/** Phrases de synthèse : ce que la course raconte, en clair (identique à l’app). */
+/**
+ * Lecture d'une sortie : ce qui s'est passé, et ce que ça dit.
+ *
+ * Chaque phrase associe un fait mesuré à son interprétation — un chiffre seul
+ * (« 4 % de découplage ») n'apprend rien à qui ne connaît pas l'indicateur. Les
+ * seuils viennent de la pratique courante de l'entraînement en endurance ; quand
+ * une mesure n'est pas fiable (trop peu de kilomètres, pas de cardio), la phrase
+ * correspondante disparaît plutôt que de meubler.
+ */
+
+/** Nature de la séance, déduite de l'intensité et de la régularité. */
+function sessionVerdict(m: RunMetrics): { title: string; detail: string } | null {
+  if (m.isInterval) {
+    return {
+      title: "Séance de fractionné",
+      detail:
+        "Alternance d'efforts et de récupérations : c'est l'allure des efforts qui compte, pas la moyenne.",
+    };
+  }
+  const pct = m.effortPctOfMax;
+  if (pct == null) {
+    if (m.paceVariationPct != null && m.paceVariationPct < 3) {
+      return {
+        title: "Sortie à allure tenue",
+        detail: "Allure très régulière d'un bout à l'autre.",
+      };
+    }
+    return null;
+  }
+  if (pct < 68) {
+    return {
+      title: "Footing en endurance",
+      detail: `Cœur à ${pct} % de ta FC max en moyenne : le travail de fond, celui qui construit la caisse sans coûter cher en récupération.`,
+    };
+  }
+  if (pct < 78) {
+    return {
+      title: "Sortie en endurance active",
+      detail: `${pct} % de ta FC max : soutenu mais conversationnel, la zone où le volume paie.`,
+    };
+  }
+  if (pct < 86) {
+    return {
+      title: "Séance tempo",
+      detail: `${pct} % de ta FC max : allure exigeante, tenable une heure environ. Elle demande un jour facile derrière.`,
+    };
+  }
+  return {
+    title: "Séance au seuil ou au-delà",
+    detail: `${pct} % de ta FC max en moyenne : c'est une séance dure, à ne pas enchaîner sans récupération.`,
+  };
+}
+
 function buildHighlights(m: RunMetrics): string[] {
   const out: string[] = [];
 
-  // Sur un fractionné, l’écart d’allure et le ralentissement de seconde moitié
-  // sont la séance elle-même, pas un défaut : on lit les efforts, pas la moyenne.
+  // --- Ce qu'était la séance ------------------------------------------------
   if (m.isInterval) {
     if (m.intervals != null) {
       const i = m.intervals;
       out.push(
-        `Séance en fractionné : ${i.effort_count} efforts tenus à ${fmtPace(i.effort_pace_sec_per_km)} /km en moyenne, récupérations à ${fmtPace(i.recovery_pace_sec_per_km)} /km.`,
+        `${i.effort_count} efforts tenus à ${fmtPace(i.effort_pace_sec_per_km)} /km en moyenne, récupérations à ${fmtPace(i.recovery_pace_sec_per_km)} /km : la moyenne de ${fmtPace(m.avgPaceSecPerKm)} /km additionne les deux et ne décrit aucune des deux.`,
       );
+      const effortKm = i.effort_distance_m / 1000;
+      if (effortKm > 0.3) {
+        out.push(
+          `${fmtNum(effortKm, 1)} km courus à l'effort sur ${fmtNum(m.distanceKm, 1)} km au total, soit ${Math.round((i.effort_sec / (i.effort_sec + i.recovery_sec)) * 100)} % du temps en course passé à intensité.`,
+        );
+      }
+    } else {
       out.push(
-        `C’est cette allure d’effort qui compte : la moyenne de ${fmtPace(m.avgPaceSecPerKm)} /km additionne les récupérations et ne décrit pas la séance.`,
+        `L'allure moyenne de ${fmtPace(m.avgPaceSecPerKm)} /km inclut les récupérations — sur ce type de séance, l'écart entre les kilomètres est voulu.`,
+      );
+    }
+  }
+
+  // --- Régularité -----------------------------------------------------------
+  if (!m.isInterval && m.paceVariationPct != null) {
+    const v = m.paceVariationPct;
+    const range =
+      m.bestKmPaceSecPerKm != null && m.worstKmPaceSecPerKm != null
+        ? ` (de ${fmtPace(m.bestKmPaceSecPerKm)} à ${fmtPace(m.worstKmPaceSecPerKm)} /km)`
+        : "";
+    if (v < 2.5) {
+      out.push(
+        `Allure remarquablement régulière : ${fmtNum(v, 1)} % d'écart entre tes kilomètres${range}. C'est le signe d'une course maîtrisée, pas subie.`,
+      );
+    } else if (v < 5) {
+      out.push(
+        `Régularité correcte : ${fmtNum(v, 1)} % d'écart entre tes kilomètres${range} — les variations restent dans le bruit normal du terrain.`,
       );
     } else {
       out.push(
-        `Séance en fractionné : l’allure moyenne de ${fmtPace(m.avgPaceSecPerKm)} /km inclut les récupérations — c’est l’allure de tes efforts qui compte, pas elle.`,
+        `Allure en dents de scie : ${fmtNum(v, 1)} % d'écart entre tes kilomètres${range}. Départ trop rapide, relief ou fatigue — c'est là qu'il y a du temps à gagner.`,
       );
-      if (m.bestKmPaceSecPerKm != null && m.worstKmPaceSecPerKm != null && m.splits.length >= 2) {
-        out.push(
-          `Allure entre ${fmtPace(m.bestKmPaceSecPerKm)} et ${fmtPace(m.worstKmPaceSecPerKm)} /km selon les kilomètres : sur ce type de séance, l’écart est voulu.`,
-        );
-      }
-    }
-  } else {
-    if (m.negativeSplitSec != null && Math.abs(m.negativeSplitSec) >= 4) {
-      out.push(
-        m.negativeSplitSec < 0
-          ? `Tu as accéléré : la seconde moitié est ${fmtSignedSec(m.negativeSplitSec).replace("−", "")} /km plus rapide que la première.`
-          : `Tu as ralenti de ${fmtSignedSec(m.negativeSplitSec).replace("+", "")} /km sur la seconde moitié.`,
-      );
-    }
-
-    if (m.bestKmPaceSecPerKm != null && m.worstKmPaceSecPerKm != null && m.splits.length >= 2) {
-      const spread = m.worstKmPaceSecPerKm - m.bestKmPaceSecPerKm;
-      if (spread >= 5) {
-        out.push(
-          `Allure entre ${fmtPace(m.bestKmPaceSecPerKm)} et ${fmtPace(m.worstKmPaceSecPerKm)} /km selon les kilomètres — ${spread < 20 ? "c’est très régulier" : "de la marge sur la régularité"}.`,
-        );
-      }
     }
   }
 
-  if (m.hrDriftBpm != null && Math.abs(m.hrDriftBpm) >= 5) {
+  // --- Gestion de l'effort dans la durée ------------------------------------
+  if (!m.isInterval && m.negativeSplitSec != null && Math.abs(m.negativeSplitSec) >= 4) {
+    out.push(
+      m.negativeSplitSec < 0
+        ? `Seconde moitié ${fmtSignedSec(m.negativeSplitSec).replace("−", "")} /km plus rapide que la première : le negative split, la façon la plus efficace de courir une distance.`
+        : `Tu as ralenti de ${fmtSignedSec(m.negativeSplitSec).replace("+", "")} /km sur la seconde moitié : le départ était un cran trop rapide pour la forme du jour.`,
+    );
+  }
+
+  if (!m.isInterval && m.finishDeltaSec != null && Math.abs(m.finishDeltaSec) >= 8) {
+    out.push(
+      m.finishDeltaSec < 0
+        ? `Ton dernier kilomètre est ${Math.abs(m.finishDeltaSec)} s /km plus rapide que les autres : il te restait de la réserve.`
+        : `Ton dernier kilomètre est ${m.finishDeltaSec} s /km plus lent que les autres : la fin a coûté cher.`,
+    );
+  }
+
+  // La place du meilleur kilomètre dans la course en dit plus que sa valeur : ouvrir
+  // sur son km le plus rapide et finir sur le plus lent, c'est un départ mal dosé.
+  if (!m.isInterval && m.fastestKm != null && m.slowestKm != null && m.splits.length >= 5) {
+    const total = m.splits.filter((sp) => !sp.isPartial).length;
+    const ord = (n: number) => `${n}${n === 1 ? "er" : "e"}`;
+    const openedFast = m.fastestKm <= Math.max(1, Math.round(total * 0.2));
+    const endedSlow = m.slowestKm >= total - Math.max(1, Math.round(total * 0.2)) + 1;
+    if (openedFast && endedSlow) {
+      out.push(
+        `Ton kilomètre le plus rapide est le ${ord(m.fastestKm)} et le plus lent le ${ord(m.slowestKm)} : la course s'est jouée sur les premières minutes, parties trop vite.`,
+      );
+    } else if (m.fastestKm >= total - Math.max(1, Math.round(total * 0.3)) + 1) {
+      out.push(
+        `Ton kilomètre le plus rapide est le ${ord(m.fastestKm)}, en fin de course : tu as gardé de quoi finir, c'est exactement ce qu'on cherche.`,
+      );
+    } else {
+      out.push(
+        `Ton kilomètre le plus rapide est le ${ord(m.fastestKm)}, le plus lent le ${ord(m.slowestKm)}.`,
+      );
+    }
+  }
+
+  // --- Cardio ---------------------------------------------------------------
+  if (m.dominantZone != null && m.dominantZone.share >= 0.35) {
+    const z = m.dominantZone;
+    out.push(
+      `${Math.round(z.share * 100)} % du temps en zone ${z.index} (${z.label.toLowerCase()}, ${z.lowBpm}–${z.highBpm} bpm) — ${z.description.toLowerCase()}.`,
+    );
+  }
+
+  if (m.decouplingPct != null && m.distanceKm >= 4) {
+    const d = m.decouplingPct;
+    if (d >= 8) {
+      out.push(
+        `Découplage cardiaque de ${fmtNum(d, 1)} % : en seconde moitié, ton cœur a dû monter nettement pour tenir la même allure. Sortie au-delà de ton endurance actuelle, ou chaleur et déshydratation.`,
+      );
+    } else if (d >= 5) {
+      out.push(
+        `Découplage cardiaque de ${fmtNum(d, 1)} % : légère dérive du rapport allure / cœur sur la seconde moitié — la limite de ton endurance du jour n'est pas loin.`,
+      );
+    } else if (d >= -3) {
+      out.push(
+        `Découplage cardiaque de ${fmtNum(d, 1)} % : ton cœur et ton allure sont restés couplés du début à la fin. C'est la marque d'un effort parfaitement dans tes moyens.`,
+      );
+    }
+  } else if (m.hrDriftBpm != null && Math.abs(m.hrDriftBpm) >= 5) {
     out.push(
       m.hrDriftBpm > 0
-        ? `Ton cœur est monté de ${m.hrDriftBpm} bpm entre le début et la fin : signe classique de fatigue ou de chaleur.`
-        : `Ta FC a baissé de ${Math.abs(m.hrDriftBpm)} bpm en seconde moitié : bonne récupération en cours d’effort.`,
+        ? `Ton cœur est monté de ${m.hrDriftBpm} bpm entre le début et la fin : signe classique de fatigue, de chaleur ou d'un départ trop rapide.`
+        : `Ta FC a baissé de ${Math.abs(m.hrDriftBpm)} bpm en seconde moitié : bonne récupération en cours d'effort.`,
     );
   }
 
+  if (m.maxBpm != null && m.hrMaxRef != null && m.maxBpm >= m.hrMaxRef * 0.95) {
+    out.push(
+      `Pointe à ${m.maxBpm} bpm, soit ${Math.round((m.maxBpm / m.hrMaxRef) * 100)} % de ta FC max de référence : tu es allé chercher très haut au moins une fois.`,
+    );
+  }
+
+  // --- Terrain --------------------------------------------------------------
   if (m.elevGainM != null && m.elevGainM >= 30 && m.distanceKm > 0) {
     const perKm = m.elevGainM / m.distanceKm;
+    // ~6 s/km par 10 m/km de dénivelé : l'ordre de grandeur communément admis
+    // pour comparer une sortie vallonnée à la même sortie sur le plat.
+    const costSecPerKm = Math.round((perKm / 10) * 6);
+    const equivalent =
+      costSecPerKm >= 4
+        ? ` À plat, la même dépense t'aurait fait tourner autour de ${fmtPace(Math.max(120, m.avgPaceSecPerKm - costSecPerKm))} /km.`
+        : "";
     out.push(
-      `${Math.round(m.elevGainM)} m de dénivelé positif, soit ${Math.round(perKm)} m/km — ${perKm < 10 ? "terrain roulant" : perKm < 25 ? "parcours vallonné" : "parcours exigeant"}.`,
+      `${Math.round(m.elevGainM)} m de dénivelé positif, soit ${Math.round(perKm)} m/km — ${perKm < 10 ? "terrain roulant" : perKm < 25 ? "parcours vallonné" : "parcours exigeant"}.${equivalent}`,
     );
   }
 
+  // --- Contexte -------------------------------------------------------------
   if (m.stoppedSec >= 30) {
+    const share = m.wallSec > 0 ? Math.round((m.stoppedSec / m.wallSec) * 100) : 0;
     out.push(
-      `${fmtDuration(m.stoppedSec)} d’arrêt total (pauses, feux, attentes) : ton temps à l’horloge est de ${fmtDuration(m.wallSec)}.`,
+      `${fmtDuration(m.stoppedSec)} d'arrêt total (pauses, feux, attentes), soit ${share} % de ton temps à l'horloge — ${fmtDuration(m.wallSec)} du départ à l'arrivée.`,
     );
   }
 
@@ -533,6 +673,7 @@ type Props = {
 export function RunDetailPanel({ run, source, birthDate }: Props) {
   const m = useMemo(() => buildRunMetrics(run, { birthDate }), [run, birthDate]);
   const highlights = useMemo(() => buildHighlights(m), [m]);
+  const verdict = useMemo(() => sessionVerdict(m), [m]);
 
   /** Le reliquat final fausserait les graphiques : on le retire des séries. */
   const fullSplits = useMemo(() => {
@@ -619,16 +760,32 @@ export function RunDetailPanel({ run, source, birthDate }: Props) {
         </div>
       </div>
 
-      {highlights.length > 0 ? (
+      {highlights.length > 0 || verdict != null ? (
         <SectionCard title="Ce que dit cette sortie" accent="#67e8f9">
-          <ul className="space-y-2">
+          {/* La nature de la séance d'abord : elle donne le cadre de lecture de
+              tout ce qui suit. */}
+          {verdict != null ? (
+            <div className="mb-3.5 rounded-xl border border-brand-ice/20 bg-brand-ice/[0.06] px-3.5 py-3">
+              <p className="font-display text-[14px] font-semibold text-white">{verdict.title}</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-white/65">
+                {frenchSpacing(verdict.detail)}
+              </p>
+            </div>
+          ) : null}
+          <ul className="space-y-2.5">
             {highlights.map((h) => (
               <li key={h} className="flex gap-2 text-[12px] leading-relaxed text-white/70">
                 <span className="mt-[0.45rem] h-1 w-1 shrink-0 rounded-full bg-brand-ice" />
-                <span>{h}</span>
+                <span>{frenchSpacing(h)}</span>
               </li>
             ))}
           </ul>
+          {m.hrMaxRefEstimated && m.hrMaxRef != null ? (
+            <p className="mt-3.5 border-t border-white/[0.06] pt-3 text-[11px] leading-relaxed text-white/30">
+              Lecture cardiaque basée sur une FC max estimée à {m.hrMaxRef} bpm d’après ton âge
+              (formule de Tanaka). Une FC max mesurée en test rendrait ces repères plus justes.
+            </p>
+          ) : null}
         </SectionCard>
       ) : null}
 

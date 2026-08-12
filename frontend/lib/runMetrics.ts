@@ -96,6 +96,27 @@ export type RunMetrics = {
   /** Écart d'allure entre seconde et première moitié : < 0 = accélération finale. */
   negativeSplitSec: number | null;
   /**
+   * Dispersion des allures au km (coefficient de variation, en %). Dit la
+   * régularité indépendamment de la vitesse : 2 % sur un footing lent et sur une
+   * course rapide décrivent la même maîtrise.
+   */
+  paceVariationPct: number | null;
+  /**
+   * Découplage cardiaque (%) : dérive du rapport allure / FC entre les deux
+   * moitiés. Au-delà de ~5 %, le cœur monte sans que l'allure suive — la limite
+   * d'endurance aérobie du jour est dépassée.
+   */
+  decouplingPct: number | null;
+  /** Zone cardiaque où le plus de temps a été passé. */
+  dominantZone: HrZone | null;
+  /** FC moyenne rapportée à la FC max de référence (%). */
+  effortPctOfMax: number | null;
+  /** Numéro du km le plus rapide et du plus lent (1-indexés, km complets). */
+  fastestKm: number | null;
+  slowestKm: number | null;
+  /** Écart du dernier km complet à l'allure moyenne des km complets (s/km). */
+  finishDeltaSec: number | null;
+  /**
    * Séance à intervalles (fractionné) d'après Strava. L'allure moyenne, la
    * régularité au km et le negative split n'y décrivent pas la séance : les
    * récupérations les tirent vers le bas alors qu'elles sont voulues.
@@ -355,6 +376,54 @@ export function buildRunMetrics(
     if (first != null && second != null) negativeSplitSec = second - first;
   }
 
+  // --- Lecture de l'exécution ---------------------------------------------
+  // Coefficient de variation : écart-type des allures rapporté à leur moyenne.
+  let paceVariationPct: number | null = null;
+  const fullPaces = fullSplits.map((s) => s.paceSecPerKm).filter((p) => p > 0);
+  if (fullPaces.length >= 3) {
+    const mu = mean(fullPaces);
+    if (mu != null && mu > 0) {
+      const variance = mean(fullPaces.map((p) => (p - mu) ** 2));
+      if (variance != null) paceVariationPct = (Math.sqrt(variance) / mu) * 100;
+    }
+  }
+
+  // Découplage : on compare le rapport allure/FC des deux moitiés. Les deux
+  // séries viennent des mêmes kilomètres, donc d'un effort réellement comparable.
+  let decouplingPct: number | null = null;
+  const withHr = fullSplits.filter((s) => s.avgBpm != null && s.avgBpm > 0 && s.paceSecPerKm > 0);
+  if (withHr.length >= 4) {
+    const half = Math.floor(withHr.length / 2);
+    const ratio = (rows: SplitRow[]) => {
+      // Vitesse par battement : plus c'est bas en seconde moitié, plus ça dérive.
+      const vals = rows.map((r) => 1000 / r.paceSecPerKm / (r.avgBpm as number));
+      return mean(vals);
+    };
+    const first = ratio(withHr.slice(0, half));
+    const second = ratio(withHr.slice(half));
+    if (first != null && second != null && first > 0) {
+      decouplingPct = ((first - second) / first) * 100;
+    }
+  }
+
+  const dominantZone =
+    hrZones.length > 0
+      ? hrZones.reduce((top, z) => (z.seconds > top.seconds ? z : top), hrZones[0])
+      : null;
+
+  const effortPctOfMax =
+    avgBpm != null && hrMaxRef != null && hrMaxRef > 0 ? (avgBpm / hrMaxRef) * 100 : null;
+
+  const fastestRow = splits.find((s) => s.isFastest) ?? null;
+  const slowestRow = splits.find((s) => s.isSlowest) ?? null;
+
+  let finishDeltaSec: number | null = null;
+  if (fullSplits.length >= 3) {
+    const last = fullSplits[fullSplits.length - 1];
+    const others = mean(fullSplits.slice(0, -1).map((s) => s.paceSecPerKm));
+    if (others != null && last.paceSecPerKm > 0) finishDeltaSec = last.paceSecPerKm - others;
+  }
+
   return {
     distanceKm,
     movingSec,
@@ -378,6 +447,13 @@ export function buildRunMetrics(
     hrMaxRefEstimated,
     splits,
     negativeSplitSec: negativeSplitSec != null ? Math.round(negativeSplitSec) : null,
+    paceVariationPct: paceVariationPct != null ? Math.round(paceVariationPct * 10) / 10 : null,
+    decouplingPct: decouplingPct != null ? Math.round(decouplingPct * 10) / 10 : null,
+    dominantZone,
+    effortPctOfMax: effortPctOfMax != null ? Math.round(effortPctOfMax) : null,
+    fastestKm: fastestRow ? fastestRow.km : null,
+    slowestKm: slowestRow ? slowestRow.km : null,
+    finishDeltaSec: finishDeltaSec != null ? Math.round(finishDeltaSec) : null,
     isInterval: run.is_interval === true,
     intervals: usableIntervals(run.interval_summary),
     trackPointCount: track.length,
