@@ -5,6 +5,10 @@ export default {
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
+    // `lib/` décrit aussi des classes (états et natures de séance) : sans lui,
+    // elles n'existent que si la même chaîne apparaît par hasard dans un
+    // composant, et la couleur disparaît sans erreur.
+    './lib/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {

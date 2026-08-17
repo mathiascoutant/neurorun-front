@@ -13,7 +13,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { LiveRunDetail, LiveRunSplit, LiveRunTrackPoint } from "@/lib/api";
+import type {
+  IntervalSegment,
+  LiveRunDetail,
+  LiveRunSplit,
+  LiveRunTrackPoint,
+} from "@/lib/api";
 import {
   MIN_FULL_SPLIT_KM,
   buildRunMetrics,
@@ -143,8 +148,11 @@ function buildHighlights(m: RunMetrics): string[] {
       );
       const effortKm = i.effort_distance_m / 1000;
       if (effortKm > 0.3) {
+        // Part du temps total en mouvement : échauffement et retour au calme
+        // compris, puisque c'est bien le temps de la sortie entière.
+        const share = m.movingSec > 0 ? Math.round((i.effort_sec / m.movingSec) * 100) : null;
         out.push(
-          `${fmtNum(effortKm, 1)} km courus à l'effort sur ${fmtNum(m.distanceKm, 1)} km au total, soit ${Math.round((i.effort_sec / (i.effort_sec + i.recovery_sec)) * 100)} % du temps en course passé à intensité.`,
+          `${fmtNum(effortKm, 1)} km courus à l'effort sur ${fmtNum(m.distanceKm, 1)} km au total${share != null ? `, soit ${share} % de ton temps en mouvement passé à intensité` : ""}.`,
         );
       }
     } else {
@@ -605,6 +613,177 @@ function SplitsTable({
   );
 }
 
+const SEGMENT_LABELS: Record<IntervalSegment["kind"], string> = {
+  warmup: "Échauffement",
+  work: "Travail",
+  recovery: "Récupération",
+  cooldown: "Retour au calme",
+};
+
+function fmtSegmentDistance(m: number): string {
+  if (m < 1000) return `${Math.round(m)} m`;
+  return `${fmtNum(m / 1000, 2)} km`;
+}
+
+const SEGMENT_COLORS: Record<IntervalSegment["kind"], string> = {
+  warmup: "rgba(255,255,255,0.14)",
+  work: "#22c55e",
+  recovery: "rgba(255,255,255,0.22)",
+  cooldown: "rgba(255,255,255,0.14)",
+};
+
+/**
+ * La séance vue d’un coup d’œil : chaque bloc occupe la largeur de sa durée, les
+ * efforts en vert. L’alternance travail / repos se lit d’un regard, avant même
+ * d’entrer dans le détail chiffré.
+ */
+function IntervalTimeline({ segments }: { segments: IntervalSegment[] }) {
+  const total = segments.reduce((a, s) => a + s.sec, 0);
+  if (total <= 0) return null;
+  return (
+    <div className="mb-3">
+      <div className="flex h-2.5 w-full gap-px overflow-hidden rounded-full bg-white/[0.04]">
+        {segments.map((s) => (
+          <div
+            key={s.index}
+            /* Plancher de largeur : une récup de 30 s sur une séance d’une heure
+               vaut 0,8 % et disparaîtrait sans lui. */
+            style={{
+              flex: `${Math.max(s.sec / total, 0.004)} 0 0`,
+              backgroundColor: SEGMENT_COLORS[s.kind],
+            }}
+            title={`${SEGMENT_LABELS[s.kind]}${s.rep ? ` ${s.rep}` : ""} · ${fmtDuration(s.sec)}`}
+          />
+        ))}
+      </div>
+      <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-white/35">
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-3 rounded-full" style={{ background: SEGMENT_COLORS.work }} />
+          travail
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="h-1.5 w-3 rounded-full"
+            style={{ background: SEGMENT_COLORS.recovery }}
+          />
+          récupération
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-3 rounded-full" style={{ background: SEGMENT_COLORS.warmup }} />
+          échauffement / retour au calme
+        </span>
+        <span>Largeur = durée réelle du bloc.</span>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Le déroulé de la séance, répétition par répétition — le seul découpage où
+ * chaque allure affichée correspond à une portion réellement courue à cette
+ * allure. Le tableau des kilomètres, lui, moyenne effort et récupération dans la
+ * même ligne dès que les répétitions ne tombent pas sur des bornes kilométriques.
+ */
+function IntervalTable({ segments }: { segments: IntervalSegment[] }) {
+  const hasHr = segments.some((s) => s.avg_heartrate != null && s.avg_heartrate > 0);
+  const workPaces = segments
+    .filter((s) => s.kind === "work" && s.pace_sec_per_km > 0)
+    .map((s) => s.pace_sec_per_km);
+  const bestWork = workPaces.length >= 2 ? Math.min(...workPaces) : null;
+  const worstWork = workPaces.length >= 2 ? Math.max(...workPaces) : null;
+
+  /* Instant de départ de chaque bloc depuis le début de la sortie : c’est lui qui
+     situe la répétition dans la séance, et qui permet de la retrouver sur la
+     courbe de FC juste en dessous. */
+  let elapsed = 0;
+  const startedAt = segments.map((s) => {
+    const at = elapsed;
+    elapsed += s.sec;
+    return at;
+  });
+
+  return (
+    <div>
+      <IntervalTimeline segments={segments} />
+      <div className="overflow-x-auto rounded-lg border border-white/[0.08]">
+        <table className="w-full min-w-[300px] text-left text-[11px]">
+          <thead>
+            <tr className="border-b border-white/[0.08] text-white/45">
+              <th className="px-2 py-2 font-medium">Bloc</th>
+              <th className="px-2 py-2 font-medium">Distance</th>
+              <th className="px-2 py-2 font-medium">Durée</th>
+              <th className="px-2 py-2 font-medium">Allure</th>
+              {hasHr ? <th className="px-2 py-2 font-medium">FC</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {segments.map((seg, i) => {
+              const isWork = seg.kind === "work";
+              return (
+                <tr
+                  key={seg.index}
+                  className={`border-b border-white/[0.05] last:border-0 ${
+                    isWork ? "bg-emerald-400/[0.04] text-white/90" : "text-white/60"
+                  }`}
+                >
+                  <td className="whitespace-nowrap px-2 py-2">
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="h-3 w-[3px] shrink-0 rounded-full"
+                        style={{ backgroundColor: SEGMENT_COLORS[seg.kind] }}
+                      />
+                      <span className={isWork ? "font-medium text-white" : undefined}>
+                        {SEGMENT_LABELS[seg.kind]}
+                      </span>
+                      {seg.rep ? (
+                        <span className="tabular-nums text-white/30">{seg.rep}</span>
+                      ) : null}
+                    </span>
+                    <span className="ml-[10px] block text-[10px] tabular-nums text-white/30">
+                      à {fmtDuration(startedAt[i])}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-2 tabular-nums">
+                    {fmtSegmentDistance(seg.distance_m)}
+                  </td>
+                  <td className="px-2 py-2 tabular-nums">{fmtDuration(seg.sec)}</td>
+                  <td
+                    className="px-2 py-2 font-medium tabular-nums"
+                    style={{
+                      color: !isWork
+                        ? undefined
+                        : bestWork != null && seg.pace_sec_per_km === bestWork
+                          ? "#22c55e"
+                          : worstWork != null && seg.pace_sec_per_km === worstWork
+                            ? "#eab308"
+                            : undefined,
+                    }}
+                  >
+                    {fmtPace(seg.pace_sec_per_km)}
+                  </td>
+                  {hasHr ? (
+                    <td className="px-2 py-2 tabular-nums">
+                      {seg.avg_heartrate != null && seg.avg_heartrate > 0
+                        ? Math.round(seg.avg_heartrate)
+                        : "—"}
+                    </td>
+                  ) : null}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {bestWork != null && worstWork != null && worstWork > bestWork ? (
+        <p className="mt-2 text-[10px] leading-relaxed text-white/35">
+          Vert : ta répétition la plus rapide. Jaune : la plus lente. L’écart entre les deux dit
+          si la séance a été tenue jusqu’au bout.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function TechDetails({ run, m }: { run: LiveRunDetail; m: RunMetrics }) {
   const rows: { label: string; value: string }[] = [];
   rows.push({ label: "Temps à l’horloge", value: fmtDuration(m.wallSec) });
@@ -702,6 +881,9 @@ export function RunDetailPanel({ run, source, birthDate }: Props) {
 
   const showSpeedPerKm = speedKmSeries.length >= 2;
   const isStrava = source === "strava";
+  /* Référence stable pour le rendu : l’API omet le détail quand elle n’a su
+     découper la séance que sur les kilomètres. */
+  const intervalSegments = useMemo(() => m.intervals?.segments ?? [], [m.intervals]);
 
   return (
     <div className="space-y-3">
@@ -859,6 +1041,22 @@ export function RunDetailPanel({ run, source, birthDate }: Props) {
           ) : null}
         </div>
       </SectionCard>
+
+      {/* Le déroulé réel de la séance : c’est lui, et pas le tableau des km, qui
+          donne l’allure de chaque répétition. */}
+      {intervalSegments.length > 0 ? (
+        <SectionCard
+          title="Travail et récupération"
+          subtitle={`Le déroulé de la séance bloc par bloc : quand tu es à l’effort, quand tu récupères, et à quelle allure — ${
+            m.intervals?.source === "laps"
+              ? "d’après les tours de ta montre"
+              : "reconstitué à partir de ta vitesse"
+          }.`}
+          accent="#22c55e"
+        >
+          <IntervalTable segments={intervalSegments} />
+        </SectionCard>
+      ) : null}
 
       {m.avgBpm != null || m.hrZones.length > 0 ? (
         <SectionCard
@@ -1057,7 +1255,11 @@ export function RunDetailPanel({ run, source, birthDate }: Props) {
       {m.splits.length > 0 ? (
         <SectionCard
           title="Kilomètre par kilomètre"
-          subtitle="Temps réel de chaque km, avec sa FC moyenne et son dénivelé."
+          subtitle={
+            m.isInterval
+              ? "Sur un fractionné, un même kilomètre contient de l’effort et de la récupération : ces allures sont des moyennes, pas des allures courues."
+              : "Temps réel de chaque km, avec sa FC moyenne et son dénivelé."
+          }
         >
           <SplitsTable
             rows={m.splits}

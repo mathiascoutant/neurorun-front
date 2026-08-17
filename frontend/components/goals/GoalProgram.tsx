@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SimplePlanBody } from '@/components/SimplePlanBody'
 import type { Goal } from '@/lib/api'
+import { sessionTypeMeta } from '@/lib/goalSessions'
 import { goalTimeline } from '@/lib/goalStats'
 import { parsePlanOutline, splitWeekSessions } from '@/lib/planOutline'
 
@@ -129,22 +130,36 @@ export function GoalProgram({ goal }: { goal: Goal }) {
       {/* Les séances tiennent sur deux colonnes dès qu'il y a la place : une semaine
           entière se lit alors sans défilement. */}
       <div className="grid gap-3 xl:grid-cols-2">
-        {sessions.map((s, i) => (
-          <article
-            key={`${week?.index}-${i}`}
-            className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"
-          >
-            {s.label ? (
-              <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 min-w-6 items-center justify-center rounded-lg bg-brand-orange/15 px-1.5 text-[11px] font-semibold tabular-nums text-brand-orange">
-                  {s.label.replace(/[^\d]/g, '') || '•'}
-                </span>
-                <h4 className="font-display text-[14px] font-semibold text-white/92">{s.label}</h4>
-              </div>
-            ) : null}
-            <SimplePlanBody text={s.body} className="max-w-[68ch]" />
-          </article>
-        ))}
+        {sessions.map((s, i) => {
+          // La nature de la séance est lue dans son texte : c'est ce qu'on cherche
+          // d'abord dans une semaine, avant même le détail des allures.
+          const type = sessionTypeMeta(s.body)
+          return (
+            <article
+              key={`${week?.index}-${i}`}
+              className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"
+            >
+              {s.label ? (
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="flex h-6 min-w-6 items-center justify-center rounded-lg bg-brand-orange/15 px-1.5 text-[11px] font-semibold tabular-nums text-brand-orange">
+                    {s.label.replace(/[^\d]/g, '') || '•'}
+                  </span>
+                  <h4 className="font-display text-[14px] font-semibold text-white/92">
+                    {s.label}
+                  </h4>
+                  {type ? (
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${type.badgeClass}`}
+                    >
+                      {type.label}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              <SimplePlanBody text={s.body} className="max-w-[68ch]" />
+            </article>
+          )
+        })}
         {sessions.length === 0 ? (
           <p className="text-[13px] text-white/40">
             Aucune séance détaillée pour cette semaine dans le plan.

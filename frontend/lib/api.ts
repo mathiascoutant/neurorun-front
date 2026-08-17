@@ -1414,6 +1414,24 @@ export type IntervalSummary = {
   recovery_sec: number;
   recovery_pace_sec_per_km: number;
   source: "laps" | "stream" | "splits";
+  /**
+   * Détail dans l’ordre de la séance. Absent quand le découpage vient des
+   * kilomètres : un km de fractionné mélange effort et récup, le détailler
+   * n’apprendrait rien de plus que le tableau des km.
+   */
+  segments?: IntervalSegment[];
+};
+
+/** Une portion de séance : répétition, récupération, échauffement, retour au calme. */
+export type IntervalSegment = {
+  index: number;
+  kind: "warmup" | "work" | "recovery" | "cooldown";
+  /** Numéro de répétition (1-indexé), absent hors des blocs d’effort. */
+  rep?: number;
+  distance_m: number;
+  sec: number;
+  pace_sec_per_km: number;
+  avg_heartrate?: number;
 };
 
 export async function getLiveRun(

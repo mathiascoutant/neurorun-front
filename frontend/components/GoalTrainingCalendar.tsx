@@ -6,13 +6,17 @@ import { GoalSessionsDone } from '@/components/goals/GoalSessionsDone'
 import type { GoalCalendarItem, GoalUnavailability } from '@/lib/api'
 import { getGoalCalendar } from '@/lib/api'
 import {
+  SESSION_TYPES,
   dateKeyFromParts,
   formatPaceSecPerKm,
   parseDateKey,
   planSessionBody,
+  planSessionTypes,
   sessionKey,
   sessionStatusMeta as statusSymbol,
+  sessionTypeMeta,
   todayKeyLocal,
+  type SessionTypeMeta,
 } from '@/lib/goalSessions'
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'] as const
@@ -114,10 +118,10 @@ function scheduleChangeNote(it: GoalCalendarItem): string {
   return ''
 }
 
-function sessionTooltip(it: GoalCalendarItem): string {
+function sessionTooltip(it: GoalCalendarItem, type: SessionTypeMeta | null): string {
   const st = statusSymbol(it.status)
   const parts = [
-    `S${it.session} · ~${it.planned_km} km`,
+    `S${it.session} · ~${it.planned_km} km${type ? ` · ${type.label}` : ''}`,
     st.label,
     it.summary || '',
     scheduleChangeNote(it),
@@ -219,6 +223,32 @@ export function GoalTrainingCalendar({ goalId, token, plan = '', planStamp = '' 
 
   const blockedDays = useMemo(() => blockedDayReasons(unavailabilities), [unavailabilities])
 
+  /*
+   * Nature des séances : lue dans le plan, avec repli sur le résumé de la séance
+   * quand le plan ne détaille pas cette semaine-là.
+   */
+  const planTypes = useMemo(() => planSessionTypes(plan), [plan])
+  const typeOf = useMemo(() => {
+    const cache = new Map<string, SessionTypeMeta | null>()
+    return (it: GoalCalendarItem): SessionTypeMeta | null => {
+      const key = sessionKey(it)
+      if (!cache.has(key)) {
+        cache.set(key, planTypes.get(key) ?? sessionTypeMeta(it.summary))
+      }
+      return cache.get(key) ?? null
+    }
+  }, [planTypes])
+
+  /** Natures effectivement présentes, pour n'afficher qu'une légende utile. */
+  const legendTypes = useMemo(() => {
+    const seen: SessionTypeMeta[] = []
+    for (const it of items) {
+      const t = typeOf(it)
+      if (t && !seen.some((s) => s.type === t.type)) seen.push(t)
+    }
+    return seen.sort((a, b) => SESSION_TYPES.indexOf(a.type) - SESSION_TYPES.indexOf(b.type))
+  }, [items, typeOf])
+
   const selected = useMemo(
     () => items.find((it) => sessionKey(it) === selectedKey) ?? null,
     [items, selectedKey],
@@ -282,6 +312,21 @@ export function GoalTrainingCalendar({ goalId, token, plan = '', planStamp = '' 
         </span>
       </div>
 
+      {legendTypes.length > 0 ? (
+        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-white/45">
+          {legendTypes.map((t) => (
+            <span key={t.type} className="flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-[3px] rounded-full"
+                style={{ backgroundColor: t.color }}
+                aria-hidden
+              />
+              {t.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       {unavailabilities.length > 0 ? (
         <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 text-[11px] leading-relaxed text-amber-100/85">
           <p className="font-medium text-amber-100">Périodes sans course</p>
@@ -320,6 +365,7 @@ export function GoalTrainingCalendar({ goalId, token, plan = '', planStamp = '' 
             key={`${mo.year}-${mo.month}`}
             month={mo}
             itemsByDate={itemsByDate}
+            typeOf={typeOf}
             blockedDays={blockedDays}
             todayKey={todayK}
             selectedKey={selectedKey}
@@ -334,6 +380,7 @@ export function GoalTrainingCalendar({ goalId, token, plan = '', planStamp = '' 
 function MonthCard({
   month,
   itemsByDate,
+  typeOf,
   blockedDays,
   todayKey,
   selectedKey,
@@ -341,6 +388,7 @@ function MonthCard({
 }: {
   readonly month: MonthGrid
   readonly itemsByDate: Map<string, GoalCalendarItem[]>
+  readonly typeOf: (it: GoalCalendarItem) => SessionTypeMeta | null
   readonly blockedDays: Map<string, string>
   readonly todayKey: string
   readonly selectedKey: string | null
@@ -361,6 +409,7 @@ function MonthCard({
               key={`${month.year}-${month.month}-${wi}-${ci}`}
               cell={cell}
               items={cell ? (itemsByDate.get(cell.dateKey) ?? []) : []}
+              typeOf={typeOf}
               blockedReason={cell ? blockedDays.get(cell.dateKey) : undefined}
               isToday={cell?.dateKey === todayKey}
               selectedKey={selectedKey}
@@ -376,6 +425,7 @@ function MonthCard({
 function DayCell({
   cell,
   items,
+  typeOf,
   blockedReason,
   isToday,
   selectedKey,
@@ -383,6 +433,7 @@ function DayCell({
 }: {
   readonly cell: { day: number; dateKey: string } | null
   readonly items: GoalCalendarItem[]
+  readonly typeOf: (it: GoalCalendarItem) => SessionTypeMeta | null
   readonly blockedReason: string | undefined
   readonly isToday: boolean
   readonly selectedKey: string | null
@@ -410,6 +461,7 @@ function DayCell({
             <SessionChip
               key={sessionKey(it)}
               item={it}
+              type={typeOf(it)}
               selected={selectedKey === sessionKey(it)}
               onSelect={onSelect}
             />
@@ -422,10 +474,12 @@ function DayCell({
 
 function SessionChip({
   item,
+  type,
   selected,
   onSelect,
 }: {
   readonly item: GoalCalendarItem
+  readonly type: SessionTypeMeta | null
   readonly selected: boolean
   readonly onSelect: (key: string) => void
 }) {
@@ -435,10 +489,16 @@ function SessionChip({
       type="button"
       aria-pressed={selected}
       onClick={() => onSelect(sessionKey(item))}
-      title={sessionTooltip(item)}
-      className={`flex items-center gap-1 rounded-md px-1 py-0.5 text-left transition hover:bg-black/45 focus:outline-none focus-visible:ring-1 focus-visible:ring-brand-orange/60 ${
-        selected ? 'bg-brand-ice/20 ring-1 ring-brand-ice/40' : 'bg-black/25'
-      } ${item.status === 'skipped' ? 'opacity-50 line-through decoration-white/30' : ''}`}
+      title={sessionTooltip(item, type)}
+      /* Une case de calendrier ne tient pas une étiquette : la nature de la séance
+         y passe par le liseré de gauche, expliqué par la légende. En bordure et
+         non en pastille, il ne prend pas sur la largeur déjà juste du libellé. */
+      style={type ? { borderLeftColor: type.color } : undefined}
+      className={`flex items-center gap-1 rounded-md border-l-[3px] px-1 py-0.5 text-left transition hover:bg-black/45 focus:outline-none focus-visible:ring-1 focus-visible:ring-brand-orange/60 ${
+        type ? '' : 'border-l-transparent'
+      } ${selected ? 'bg-brand-ice/20 ring-1 ring-brand-ice/40' : 'bg-black/25'} ${
+        item.status === 'skipped' ? 'opacity-50 line-through decoration-white/30' : ''
+      }`}
     >
       <span className={`shrink-0 text-sm leading-none ${st.className}`}>{st.sym}</span>
       <span className="min-w-0 truncate text-[10px] leading-tight text-white/70 sm:text-[11px]">

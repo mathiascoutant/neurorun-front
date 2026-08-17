@@ -4,7 +4,12 @@ import dynamic from 'next/dynamic'
 import { useEffect, useState } from 'react'
 import { SimplePlanBody } from '@/components/SimplePlanBody'
 import { getStravaActivityDetail, type GoalCalendarItem, type LiveRunDetail } from '@/lib/api'
-import { formatLongDate, formatPaceSecPerKm, sessionStatusMeta } from '@/lib/goalSessions'
+import {
+  formatLongDate,
+  formatPaceSecPerKm,
+  sessionStatusMeta,
+  sessionTypeMeta,
+} from '@/lib/goalSessions'
 
 /*
  * Fiche d'une séance du plan.
@@ -71,16 +76,33 @@ function statusChipLabel(item: GoalCalendarItem): string {
   }
 }
 
-function SessionHeader({ item, onClose }: { readonly item: GoalCalendarItem; readonly onClose: () => void }) {
+function SessionHeader({
+  item,
+  planBody,
+  onClose,
+}: {
+  readonly item: GoalCalendarItem
+  readonly planBody: string
+  readonly onClose: () => void
+}) {
   const st = sessionStatusMeta(item.status)
+  // Le texte du plan décrit la séance ; le résumé sert quand le plan est muet.
+  const type = sessionTypeMeta(planBody || item.summary)
   return (
     <div className="flex items-start gap-3">
       <div className="min-w-0 flex-1">
         <p className="app-kicker text-brand-ice">
           Semaine {item.week} · séance {item.session}
         </p>
-        <h4 className="mt-1 font-display text-[16px] font-semibold capitalize text-white">
+        <h4 className="mt-1 flex flex-wrap items-center gap-2 font-display text-[16px] font-semibold capitalize text-white">
           {formatLongDate(item.date)}
+          {type ? (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${type.badgeClass}`}
+            >
+              {type.label}
+            </span>
+          ) : null}
         </h4>
       </div>
       <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${st.badgeClass}`}>
@@ -195,7 +217,7 @@ export function GoalSessionDetail({ item, planBody, token, onClose }: Props) {
 
   return (
     <section className="rounded-2xl border border-white/[0.1] bg-white/[0.035] p-4">
-      <SessionHeader item={item} onClose={onClose} />
+      <SessionHeader item={item} planBody={planBody} onClose={onClose} />
       <SessionScheduleNote item={item} />
       <SessionStats item={item} />
 
