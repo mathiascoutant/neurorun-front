@@ -657,6 +657,9 @@ export default function HomePage() {
             <Link href="/contact/" className="transition hover:text-white/75">
               Contact
             </Link>
+            <Link href="/confidentialite/" className="transition hover:text-white/75">
+              Confidentialité
+            </Link>
             <a href="#offres" className="transition hover:text-white/75">
               Offres
             </a>

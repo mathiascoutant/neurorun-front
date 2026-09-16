@@ -28,6 +28,10 @@ export default function ContactPage() {
           <Link href="/login/" className="font-medium text-brand-ice hover:text-white">
             Connexion
           </Link>
+          {' · '}
+          <Link href="/confidentialite/" className="font-medium text-brand-ice hover:text-white">
+            Confidentialité
+          </Link>
         </p>
       }
     >
