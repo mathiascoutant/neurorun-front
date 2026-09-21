@@ -363,6 +363,8 @@ export type AdminUserRow = {
   created_at: string;
   /** Dernière activité API (connexion ou usage du site avec token), RFC3339 */
   last_seen_at?: string;
+  /** Invité à l’avant-première (admin → Avant-première). */
+  beta_access?: boolean;
 };
 
 export async function adminListUsers(
@@ -389,7 +391,7 @@ export async function adminGetUser(token: string, id: string): Promise<{
 export async function adminPatchUser(
   token: string,
   id: string,
-  body: { role?: string; plan?: string },
+  body: { role?: string; plan?: string; beta_access?: boolean },
 ): Promise<{ ok: boolean; user: MeUser }> {
   return api(`/api/admin/users/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -476,6 +478,101 @@ export async function adminPutOfferConfig(
     token,
     body: JSON.stringify(cfg),
   });
+}
+
+/**
+ * Verrou « avant-première » : l’app et le site restent fermés à qui n’est pas invité.
+ *
+ * Rien n’est embarqué côté app — elle affiche tel quel le message renvoyé par l’API au refus
+ * de connexion. Changer ce texte ici suffit à changer ce que lisent les gens.
+ */
+export type BetaConfigPayload = {
+  enabled: boolean;
+  message: string;
+  /** Longueur maximale acceptée par l’API, au-delà de laquelle le message est tronqué. */
+  message_max_len: number;
+};
+
+export async function adminGetBetaConfig(token: string): Promise<BetaConfigPayload> {
+  return api<BetaConfigPayload>("/api/admin/beta-config", { token });
+}
+
+export async function adminPutBetaConfig(
+  token: string,
+  cfg: { enabled: boolean; message: string },
+): Promise<BetaConfigPayload> {
+  return api<BetaConfigPayload>("/api/admin/beta-config", {
+    method: "PUT",
+    token,
+    body: JSON.stringify(cfg),
+  });
+}
+
+/**
+ * D’où les comptes se connectent, déduit du libellé d’appareil des sessions longues.
+ *
+ * Ce n’est pas un compteur de téléchargements : l’App Store ne dit à personne qui installe
+ * l’app. On mesure les comptes qui ont ouvert une session depuis l’app.
+ */
+export type PlatformAccount = {
+  id: string;
+  email: string;
+  name?: string;
+  /** Plateformes distinctes vues sur ce compte : ios, android, web, unknown. */
+  platforms: string[];
+  first_seen: Record<string, string>;
+  last_seen: Record<string, string>;
+  sessions: Record<string, number>;
+};
+
+export type DeviceSample = { device: string; count: number };
+
+export type PlatformReport = {
+  accounts: PlatformAccount[];
+  accounts_by_platform: Record<string, number>;
+  /** Libellés bruts par plateforme : de quoi vérifier le classement au lieu de le croire. */
+  samples_by_platform: Record<string, DeviceSample[]>;
+  users_total: number;
+  /** Comptes sans aucune session longue enregistrée — invisibles dans la répartition. */
+  users_without_session: number;
+};
+
+export async function adminPlatforms(token: string): Promise<PlatformReport> {
+  return api<PlatformReport>("/api/admin/platforms", { token });
+}
+
+/**
+ * Téléchargements App Store, lus via l’App Store Connect API.
+ *
+ * Toujours des totaux : Apple ne communique aucune identité. `configured: false` signale qu’il
+ * manque des variables d’environnement côté serveur, pas une panne — d’où `missing`.
+ */
+export type AppDownloadsDay = {
+  day: string;
+  first_installs: number;
+  redownloads: number;
+  updates: number;
+  units_by_type: Record<string, number>;
+  installs_by_country: Record<string, number>;
+};
+
+export type AppDownloads = {
+  configured: boolean;
+  /** Variables d’environnement manquantes, quand `configured` est faux. */
+  missing?: string[];
+  /** Message d’Apple, repris tel quel : il nomme précisément ce qui cloche. */
+  error?: string;
+  days?: number;
+  daily?: AppDownloadsDay[];
+  first_installs?: number;
+  redownloads?: number;
+  updates?: number;
+  installs_by_country?: Record<string, number>;
+  units_by_type?: Record<string, number>;
+};
+
+export async function adminAppDownloads(token: string, days = 30): Promise<AppDownloads> {
+  return api<AppDownloads>(`/api/admin/app-downloads?days=${days}`, { token });
 }
 
 export type CircuitLatLng = { lat: number; lng: number };

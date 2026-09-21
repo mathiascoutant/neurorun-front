@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { Mark } from '@/components/Mark'
 import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 
-export type AdminSection = 'overview' | 'users' | 'offers' | 'promos' | 'circuits'
+export type AdminSection = 'overview' | 'users' | 'platforms' | 'beta' | 'offers' | 'promos' | 'circuits'
 
 export const ADMIN_DRAWER_ID = 'admin-nav-drawer'
 
@@ -20,6 +20,12 @@ const ICONS = {
     'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.878.335 2.18-.601a18.6 18.6 0 004.831-4.83c.936-.302 1.3-1.482.6-2.181L11.16 3.66A2.25 2.25 0 009.568 3zM6 6h.008v.008H6V6z',
   circuits:
     'M12 3.75c-3.75 0-6.75 2.25-6.75 5.25 0 3 3 5.25 6.75 8.25 3.75-3 6.75-5.25 6.75-8.25 0-3-3-5.25-6.75-5.25zm0 7.5a2.25 2.25 0 110-4.5 2.25 2.25 0 010 4.5z',
+  /* Téléphone : l’onglet dit depuis quel appareil les comptes se connectent. */
+  platforms:
+    'M10.5 1.5h3m-9 3.75A2.25 2.25 0 016.75 3h10.5a2.25 2.25 0 012.25 2.25v13.5A2.25 2.25 0 0117.25 21H6.75a2.25 2.25 0 01-2.25-2.25V5.25zm6 12.75h1.5',
+  /* Cadenas : l’onglet ferme l’application au public, l’icône doit le dire sans légende. */
+  beta:
+    'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 0h10.5a2.25 2.25 0 012.25 2.25v6a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25v-6a2.25 2.25 0 012.25-2.25z',
   back: 'M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3',
 } as const
 
@@ -41,6 +47,8 @@ const GROUPS: { label: string; items: Entry[] }[] = [
     label: 'Communauté',
     items: [
       { id: 'users', label: 'Utilisateurs', icon: 'users' },
+      { id: 'platforms', label: 'Plateformes', icon: 'platforms' },
+      { id: 'beta', label: 'Avant-première', icon: 'beta' },
       { id: 'circuits', label: 'Parcours & temps', icon: 'circuits' },
     ],
   },
@@ -56,6 +64,8 @@ const GROUPS: { label: string; items: Entry[] }[] = [
 export const ADMIN_SECTION_META: Record<AdminSection, { title: string; subtitle: string }> = {
   overview: { title: 'Vue d’ensemble', subtitle: 'Croissance, revenus et usage du produit' },
   users: { title: 'Utilisateurs', subtitle: 'Comptes, rôles, offres et activité' },
+  platforms: { title: 'Plateformes', subtitle: 'Qui utilise l’app iOS, Android ou le site' },
+  beta: { title: 'Avant-première', subtitle: 'Restreindre l’accès à une liste d’invités' },
   offers: { title: 'Offres & paliers', subtitle: 'Prix, libellés et fonctionnalités incluses' },
   promos: { title: 'Codes promo', subtitle: 'Réductions appliquées au paiement' },
   circuits: { title: 'Parcours & temps', subtitle: 'Tracés enregistrés et chronos des coureurs' },
