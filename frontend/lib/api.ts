@@ -84,6 +84,8 @@ export type MeUser = {
   role?: string;
   plan?: string;
   capabilities?: MeCapabilities;
+  /** Contrat d’ambassadeur sur ce compte : affiche l’onglet Ambassadeur. */
+  is_ambassador?: boolean;
 };
 
 export type RegisterGender = "female" | "male" | "other" | "unspecified";
@@ -186,7 +188,14 @@ export async function fetchPublicOfferConfig(): Promise<OfferConfigPayload> {
 export type CheckoutPreviewResult = {
   plan: string;
   base_price_eur: number;
+  /** Pourcentage retiré, 0 pour une remise en euros. */
   discount_percent: number;
+  /** Montant retiré, quelle que soit la nature du code. */
+  discount_eur: number;
+  /** `percent` | `amount`, vide sans code appliqué. */
+  discount_kind: PromoKind | "";
+  /** « 30 % » ou « 5 € », tel qu’écrit par l’API. */
+  discount_label?: string;
   final_price_eur: number;
   email: string;
 };
@@ -407,10 +416,17 @@ export async function adminDeleteUser(token: string, id: string): Promise<void> 
   });
 }
 
+/** Nature d’une remise : pourcentage du prix, ou montant fixe en euros. */
+export type PromoKind = "percent" | "amount";
+
 export type PromoCodeRow = {
   id: string;
   code: string;
+  /** Absent sur les codes créés avant les remises en euros : à lire comme `percent`. */
+  kind?: PromoKind;
   percent_off: number;
+  /** Remise en centimes quand `kind` vaut `amount`. */
+  amount_off_cents?: number;
   max_uses: number;
   uses: number;
   expires_at?: string | null;
@@ -418,6 +434,22 @@ export type PromoCodeRow = {
   applicable_plans?: string[];
   created_at: string;
 };
+
+/** Nature effective d’un code : les anciens n’ont pas de champ `kind`. */
+export function promoKind(p: Pick<PromoCodeRow, "kind">): PromoKind {
+  return p.kind === "amount" ? "amount" : "percent";
+}
+
+/** Remise lisible : « −30 % » ou « −5,00 € ». */
+export function promoDiscountLabel(
+  p: Pick<PromoCodeRow, "kind" | "percent_off" | "amount_off_cents">,
+): string {
+  if (promoKind(p) === "amount") {
+    const eur = (p.amount_off_cents ?? 0) / 100;
+    return `−${eur.toFixed(2).replace(".", ",")} €`;
+  }
+  return `−${p.percent_off} %`;
+}
 
 export async function adminListPromos(token: string): Promise<{ promo_codes: PromoCodeRow[] }> {
   return api<{ promo_codes: PromoCodeRow[] }>("/api/admin/promo-codes", { token });
@@ -427,7 +459,9 @@ export async function adminCreatePromo(
   token: string,
   body: {
     code: string;
+    kind: PromoKind;
     percent_off: number;
+    amount_off_cents: number;
     max_uses: number;
     expires_at?: string | null;
     active: boolean;
@@ -445,7 +479,9 @@ export async function adminPatchPromo(
   token: string,
   id: string,
   body: Partial<{
+    kind: PromoKind;
     percent_off: number;
+    amount_off_cents: number;
     max_uses: number;
     active: boolean;
     applicable_plans: string[];
@@ -462,6 +498,200 @@ export async function adminDeletePromo(token: string, id: string): Promise<void>
   await api<unknown>(`/api/admin/promo-codes/${encodeURIComponent(id)}`, {
     method: "DELETE",
     token,
+  });
+}
+
+/* ——— Ambassadeurs ———
+ *
+ * Le contrat vient de l’API, jamais du client : c’est le texte qui engage les deux parties,
+ * et la version signée est enregistrée avec chaque signature.
+ */
+
+export type ContractBlock = {
+  text?: string;
+  bullets?: string[];
+};
+
+export type ContractArticle = {
+  number: number;
+  title: string;
+  blocks: ContractBlock[];
+};
+
+export type AmbassadorContract = {
+  version: string;
+  title: string;
+  subtitle: string;
+  parties_title: string;
+  parties_intro: string;
+  articles: ContractArticle[];
+  closing: string[];
+  /** Mention à recopier au-dessus de la signature (« Lu et approuvé »). */
+  mention: string;
+  footer: string;
+  company_name: string;
+};
+
+/** Étapes de vie d’un contrat : désigné → signé → en vigueur, ou terminé. */
+export type AmbassadorStatus = "pending" | "signed" | "active" | "ended";
+
+export type ContractSignature = {
+  full_name: string;
+  mention: string;
+  signed_at: string;
+};
+
+export type AmbassadorPromo = {
+  id: string;
+  code: string;
+  kind: PromoKind;
+  percent_off: number;
+  amount_off_cents: number;
+  amount_off_eur: number;
+  /** « 30 % » ou « 5 € », calculé par l’API. */
+  discount_label: string;
+  max_uses: number;
+  uses: number;
+  /** Utilisations restantes, `null` si le code est illimité. */
+  uses_left: number | null;
+  active: boolean;
+  exhausted: boolean;
+  usable: boolean;
+  expires_at?: string | null;
+  created_at: string;
+};
+
+export type AmbassadorRow = {
+  id: string;
+  email: string;
+  /** Console uniquement. */
+  user_id?: string;
+  plan?: string;
+  account_first_name?: string;
+  account_last_name?: string;
+  /** Identité saisie en signant — celle qui engage. */
+  contract_first_name?: string;
+  contract_last_name?: string;
+  display_name: string;
+  instagram?: string;
+  status: AmbassadorStatus;
+  contract_version?: string;
+  ambassador_signature?: ContractSignature;
+  company_signature?: ContractSignature;
+  promo: AmbassadorPromo | null;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  ended_at?: string | null;
+};
+
+/** Corps de remise partagé par la création et la modification d’un contrat. */
+export type AmbassadorPromoInput = {
+  kind: PromoKind;
+  percent_off: number;
+  amount_off_cents: number;
+  max_uses: number;
+  active?: boolean;
+};
+
+export async function adminListAmbassadors(
+  token: string,
+): Promise<{ ambassadors: AmbassadorRow[]; contract_version: string }> {
+  return api<{ ambassadors: AmbassadorRow[]; contract_version: string }>("/api/admin/ambassadors", {
+    token,
+  });
+}
+
+export async function adminCreateAmbassador(
+  token: string,
+  body: {
+    user_id: string;
+    instagram?: string;
+    notes?: string;
+    promo: AmbassadorPromoInput & { code: string };
+    /** Applique l’article 2 tout de suite : offre Performance et accès avant-première. */
+    grant_benefits: boolean;
+  },
+): Promise<{ ambassador: AmbassadorRow; contract: AmbassadorContract }> {
+  return api("/api/admin/ambassadors", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function adminGetAmbassador(
+  token: string,
+  id: string,
+): Promise<{ ambassador: AmbassadorRow; contract: AmbassadorContract }> {
+  return api(`/api/admin/ambassadors/${encodeURIComponent(id)}`, { token });
+}
+
+export async function adminPatchAmbassador(
+  token: string,
+  id: string,
+  body: Partial<{
+    instagram: string;
+    notes: string;
+    status: AmbassadorStatus;
+    promo: AmbassadorPromoInput;
+  }>,
+): Promise<{ ambassador: AmbassadorRow; contract: AmbassadorContract }> {
+  return api(`/api/admin/ambassadors/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+/** Contre-signature NeuroRun : met le contrat en vigueur. */
+export async function adminSignAmbassador(
+  token: string,
+  id: string,
+  body: { full_name: string; mention: string },
+): Promise<{ ambassador: AmbassadorRow; contract: AmbassadorContract }> {
+  return api(`/api/admin/ambassadors/${encodeURIComponent(id)}/sign`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function adminDeleteAmbassador(token: string, id: string): Promise<void> {
+  await api<unknown>(`/api/admin/ambassadors/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export type MyAmbassadorResult = {
+  /** `null` quand le compte n’est pas ambassadeur — ce n’est pas une erreur. */
+  ambassador: AmbassadorRow | null;
+  contract?: AmbassadorContract;
+  mention?: string;
+};
+
+export async function fetchMyAmbassador(
+  token: string,
+  init?: Pick<RequestInit, "signal">,
+): Promise<MyAmbassadorResult> {
+  return api<MyAmbassadorResult>("/api/me/ambassador", { token, ...init });
+}
+
+export async function signMyAmbassadorContract(
+  token: string,
+  body: {
+    last_name: string;
+    first_name: string;
+    instagram: string;
+    mention: string;
+    full_name: string;
+  },
+): Promise<MyAmbassadorResult> {
+  return api<MyAmbassadorResult>("/api/me/ambassador/sign", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
   });
 }
 
@@ -810,6 +1040,16 @@ export async function fetchStravaDashboard(token: string, period: StravaDashboar
 /** Fiabilité de la projection pour une distance. */
 export type ForecastConfidence = "high" | "medium" | "low";
 
+export type ForecastRef = {
+  activity_id?: number;
+  name?: string;
+  start_at: string;
+  distance_km: number;
+  time_sec: number;
+  /** Course (compétition) plutôt que sortie d’entraînement. */
+  race: boolean;
+};
+
 export type RaceLegForecast = {
   id: string;
   label: string;
@@ -830,8 +1070,10 @@ export type RaceLegForecast = {
   confidence: ForecastConfidence;
   /** Sorties dans la bande de preuve directe (0 = projection extrapolée). */
   direct_runs: number;
-  /** Taille d’échantillon effective (Kish) après pondération récence × proximité. */
-  effective_runs?: number;
+  /** Performances qui ont fait le chrono (consensus autour de la meilleure). */
+  support_runs?: number;
+  /** Performance réelle qui ancre la prévision. */
+  ref?: ForecastRef;
   /** Sortie la plus longue de la fenêtre : garde-fou endurance sur semi / marathon. */
   longest_run_km?: number;
 };
@@ -879,7 +1121,18 @@ function normalizeRaceForecastPayload(d: RaceForecastPayload): RaceForecastPaylo
       time_high_sec: typeof leg.time_high_sec === "number" ? leg.time_high_sec : undefined,
       confidence: normalizeConfidence(leg.confidence),
       direct_runs: typeof leg.direct_runs === "number" ? leg.direct_runs : 0,
-      effective_runs: typeof leg.effective_runs === "number" ? leg.effective_runs : undefined,
+      support_runs: typeof leg.support_runs === "number" ? leg.support_runs : undefined,
+      ref:
+        leg.ref && typeof leg.ref.distance_km === "number" && typeof leg.ref.time_sec === "number"
+          ? {
+              activity_id: typeof leg.ref.activity_id === "number" ? leg.ref.activity_id : undefined,
+              name: typeof leg.ref.name === "string" && leg.ref.name.trim() ? leg.ref.name.trim() : undefined,
+              start_at: typeof leg.ref.start_at === "string" ? leg.ref.start_at : "",
+              distance_km: leg.ref.distance_km,
+              time_sec: leg.ref.time_sec,
+              race: leg.ref.race === true,
+            }
+          : undefined,
       longest_run_km: typeof leg.longest_run_km === "number" ? leg.longest_run_km : undefined,
     })),
   };

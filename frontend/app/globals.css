@@ -1054,6 +1054,193 @@
     }
   }
 
+  /*
+    Contrat d’ambassadeur.
+
+    Le même composant sert à l’écran (sombre, dans l’app) et à l’impression (noir sur
+    blanc, seul sur la feuille) : les deux rendus vivent donc ici, côte à côte, plutôt
+    que dans des surcharges éparpillées dans les pages.
+  */
+  .contract-doc {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    background-color: rgba(10, 12, 18, 0.72);
+    padding: 20px 18px;
+    font-size: 13.5px;
+    line-height: 1.68;
+    color: rgba(255, 255, 255, 0.78);
+  }
+  @media (min-width: 640px) {
+    .contract-doc {
+      padding: 34px 38px;
+    }
+  }
+  .contract-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 10px;
+  }
+  .contract-kicker {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.42);
+  }
+  .contract-title {
+    margin-top: 22px;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: #fff;
+  }
+  .contract-lede {
+    margin-top: 10px;
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .contract-parties {
+    margin-top: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .contract-parties-grid {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  @media (min-width: 540px) {
+    .contract-parties-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  .contract-field-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.4);
+  }
+  .contract-field-value {
+    margin-top: 3px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    padding-bottom: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .contract-field-value--blank {
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.28);
+  }
+  .contract-article {
+    margin-top: 22px;
+  }
+  .contract-article-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  .contract-article-number {
+    color: #fc4c02;
+  }
+  .contract-p {
+    margin-top: 9px;
+  }
+  .contract-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 10px;
+    padding-left: 2px;
+  }
+  .contract-li {
+    display: flex;
+    gap: 9px;
+  }
+  .contract-li::before {
+    content: '';
+    margin-top: 8px;
+    height: 4px;
+    width: 4px;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    background-color: rgba(252, 76, 2, 0.8);
+  }
+  .contract-closing {
+    margin-top: 24px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+  }
+  .contract-signatures {
+    display: grid;
+    gap: 14px;
+    margin-top: 16px;
+  }
+  @media (min-width: 640px) {
+    .contract-signatures {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  .contract-sign {
+    display: flex;
+    min-height: 124px;
+    flex-direction: column;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 13px 15px;
+  }
+  .contract-sign-party {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.4);
+  }
+  .contract-sign-body {
+    margin-top: auto;
+    padding-top: 14px;
+  }
+  .contract-sign-mention {
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+  .contract-sign-name {
+    margin-top: 2px;
+    font-size: 17px;
+    font-style: italic;
+    color: #fff;
+  }
+  .contract-sign-date {
+    margin-top: 4px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.38);
+  }
+  .contract-sign-waiting {
+    font-size: 11.5px;
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.3);
+  }
+  .contract-footer {
+    margin-top: 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 12px;
+    text-align: center;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.32);
+  }
+
   /* Tableau de secours sous un graphique (lecture au clavier / lecteur d’écran). */
   .chart-table {
     width: 100%;
@@ -1084,6 +1271,98 @@
   .chart-table tbody td {
     border-top: 1px solid rgba(255, 255, 255, 0.05);
     color: rgba(255, 255, 255, 0.78);
+  }
+}
+
+/*
+  Impression : « Imprimer / PDF » depuis l’espace ambassadeur ou la console ne doit sortir
+  que le contrat — ni navigation, ni boutons, ni pages blanches derrière.
+
+  Masquer en `visibility: hidden` ne suffisait pas : le reste de la page garderait sa
+  hauteur, et le contrat vit dans des conteneurs qui bornent la leur (colonne défilante,
+  tiroir en `position: fixed`) — le document serait coupé à la première page. On retire
+  donc tout ce qui n’est ni le contrat, ni un de ses ancêtres, et on remet ces ancêtres à
+  plat le temps de l’impression.
+*/
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    background-image: none !important;
+  }
+  body *:not(:has(.contract-doc)):not(.contract-doc):not(.contract-doc *) {
+    display: none !important;
+  }
+  body *:has(.contract-doc) {
+    display: block !important;
+    position: static !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    transform: none !important;
+    animation: none !important;
+    backdrop-filter: none !important;
+  }
+  /* Les décors des ancêtres (halo orange de l’espace membre) sont des pseudo-éléments :
+     ils survivraient au `display: none` posé sur les éléments. */
+  body *:has(.contract-doc)::before,
+  body *:has(.contract-doc)::after {
+    content: none !important;
+    display: none !important;
+  }
+  .contract-doc {
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+    font-size: 10.5pt !important;
+    line-height: 1.5 !important;
+  }
+  .contract-doc .contract-title,
+  .contract-doc .contract-article-head,
+  .contract-doc .contract-field-value,
+  .contract-doc .contract-sign-name,
+  .contract-doc .contract-article-number {
+    color: #000 !important;
+  }
+  .contract-doc .contract-kicker,
+  .contract-doc .contract-lede,
+  .contract-doc .contract-field-label,
+  .contract-doc .contract-closing,
+  .contract-doc .contract-sign-party,
+  .contract-doc .contract-sign-mention,
+  .contract-doc .contract-sign-date,
+  .contract-doc .contract-footer,
+  .contract-doc .contract-sign-waiting {
+    color: #444 !important;
+  }
+  .contract-doc .contract-head,
+  .contract-doc .contract-parties,
+  .contract-doc .contract-sign,
+  .contract-doc .contract-footer,
+  .contract-doc .contract-field-value {
+    border-color: #c8c8c8 !important;
+  }
+  .contract-doc .contract-li::before {
+    background-color: #666 !important;
+  }
+  .contract-doc .contract-article,
+  .contract-doc .contract-sign,
+  .contract-doc .contract-signatures {
+    break-inside: avoid;
   }
 }
 

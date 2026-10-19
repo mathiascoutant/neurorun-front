@@ -43,6 +43,7 @@ export function CheckoutPlanClient() {
   const [preview, setPreview] = useState<{
     base_price_eur: number
     discount_percent: number
+    discount_eur: number
     final_price_eur: number
   } | null>(null)
   const [previewErr, setPreviewErr] = useState('')
@@ -355,10 +356,17 @@ export function CheckoutPlanClient() {
                       <dt className="text-white/45">Sous-total</dt>
                       <dd className="tabular-nums text-white/90">{formatEUR(preview.base_price_eur)}</dd>
                     </div>
-                    {preview.discount_percent > 0 ? (
+                    {/* La remise peut être un pourcentage ou un montant : on montre les euros
+                        retirés, et le taux en plus quand c’en est un. */}
+                    {preview.discount_eur > 0 ? (
                       <div className="flex justify-between gap-3">
-                        <dt className="text-white/45">Réduction</dt>
-                        <dd className="tabular-nums text-brand-ice">− {preview.discount_percent} %</dd>
+                        <dt className="text-white/45">
+                          Réduction
+                          {preview.discount_percent > 0 ? (
+                            <span className="ml-1 text-white/35">({preview.discount_percent} %)</span>
+                          ) : null}
+                        </dt>
+                        <dd className="tabular-nums text-brand-ice">− {formatEUR(preview.discount_eur)}</dd>
                       </div>
                     ) : null}
                     <div className="flex justify-between gap-3 border-t border-white/[0.06] pt-4">

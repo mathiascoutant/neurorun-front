@@ -5,7 +5,15 @@ import type { ReactNode } from 'react'
 import { Mark } from '@/components/Mark'
 import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 
-export type AdminSection = 'overview' | 'users' | 'platforms' | 'beta' | 'offers' | 'promos' | 'circuits'
+export type AdminSection =
+  | 'overview'
+  | 'users'
+  | 'platforms'
+  | 'beta'
+  | 'offers'
+  | 'promos'
+  | 'ambassadors'
+  | 'circuits'
 
 export const ADMIN_DRAWER_ID = 'admin-nav-drawer'
 
@@ -23,6 +31,9 @@ const ICONS = {
   /* Téléphone : l’onglet dit depuis quel appareil les comptes se connectent. */
   platforms:
     'M10.5 1.5h3m-9 3.75A2.25 2.25 0 016.75 3h10.5a2.25 2.25 0 012.25 2.25v13.5A2.25 2.25 0 0117.25 21H6.75a2.25 2.25 0 01-2.25-2.25V5.25zm6 12.75h1.5',
+  /* Mégaphone : l’ambassadeur parle de NeuroRun sur ses réseaux. */
+  ambassadors:
+    'M10.34 15.84a48 48 0 00-5.37 2.17 1.5 1.5 0 01-2.12-1.37v-5.28a1.5 1.5 0 012.12-1.37 48 48 0 005.37 2.17m0 3.66V12.18m0 3.66a21.9 21.9 0 015.91 3.1c.86.59 2-.05 2-1.09V6.15c0-1.04-1.14-1.68-2-1.09a21.9 21.9 0 01-5.91 3.1m0 0v3.66m-3.4 7.63a1.5 1.5 0 01-2.86.44l-1.3-3.5',
   /* Cadenas : l’onglet ferme l’application au public, l’icône doit le dire sans légende. */
   beta:
     'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 0h10.5a2.25 2.25 0 012.25 2.25v6a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25v-6a2.25 2.25 0 012.25-2.25z',
@@ -57,6 +68,7 @@ const GROUPS: { label: string; items: Entry[] }[] = [
     items: [
       { id: 'offers', label: 'Offres & paliers', icon: 'offerCard' },
       { id: 'promos', label: 'Codes promo', icon: 'promos' },
+      { id: 'ambassadors', label: 'Ambassadeurs', icon: 'ambassadors' },
     ],
   },
 ]
@@ -68,6 +80,7 @@ export const ADMIN_SECTION_META: Record<AdminSection, { title: string; subtitle:
   beta: { title: 'Avant-première', subtitle: 'Restreindre l’accès à une liste d’invités' },
   offers: { title: 'Offres & paliers', subtitle: 'Prix, libellés et fonctionnalités incluses' },
   promos: { title: 'Codes promo', subtitle: 'Réductions appliquées au paiement' },
+  ambassadors: { title: 'Ambassadeurs', subtitle: 'Contrats signés, codes personnels et retombées' },
   circuits: { title: 'Parcours & temps', subtitle: 'Tracés enregistrés et chronos des coureurs' },
 }
 

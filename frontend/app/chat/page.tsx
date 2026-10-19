@@ -299,6 +299,7 @@ function ChatPageContent() {
         onClose={() => setSidebarOpen(false)}
         capabilities={me.capabilities}
         isAdmin={me.role === 'admin'}
+        isAmbassador={me.is_ambassador}
         firstName={me.first_name}
         lastName={me.last_name}
         secondary={

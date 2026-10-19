@@ -12,6 +12,7 @@ import {
 } from '@/lib/api'
 import { clearToken, getToken } from '@/lib/auth'
 import { AdminShell, type AdminSection } from '@/components/admin/AdminShell'
+import { AdminAmbassadors } from '@/components/admin/AdminAmbassadors'
 import { AdminBeta } from '@/components/admin/AdminBeta'
 import { AdminCircuits } from '@/components/admin/AdminCircuits'
 import { AdminOffers } from '@/components/admin/AdminOffers'
@@ -21,7 +22,16 @@ import { AdminPromos } from '@/components/admin/AdminPromos'
 import { AdminUsers } from '@/components/admin/AdminUsers'
 import { AdminUiProvider, ErrorBanner, Spinner } from '@/components/admin/ui'
 
-const SECTIONS: AdminSection[] = ['overview', 'users', 'platforms', 'beta', 'offers', 'promos', 'circuits']
+const SECTIONS: AdminSection[] = [
+  'overview',
+  'users',
+  'platforms',
+  'beta',
+  'offers',
+  'promos',
+  'ambassadors',
+  'circuits',
+]
 
 /** Section demandée dans l’URL (#users) : recharger la page garde sa place. */
 function sectionFromHash(): AdminSection {
@@ -170,6 +180,10 @@ export default function AdminPage() {
         {section === 'offers' ? <AdminOffers stats={stats} onSaved={setOfferCfg} /> : null}
 
         {section === 'promos' ? <AdminPromos onTotal={setCount('promos')} /> : null}
+
+        {section === 'ambassadors' ? (
+          <AdminAmbassadors offerCfg={offerCfg} onTotal={setCount('ambassadors')} />
+        ) : null}
 
         {section === 'circuits' ? <AdminCircuits onTotal={setCount('circuits')} /> : null}
       </AdminShell>

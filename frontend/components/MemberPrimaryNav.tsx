@@ -2,7 +2,15 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { MeCapabilities } from '@/lib/api'
 
-export type MemberNavActive = 'dashboard' | 'coach' | 'goals' | 'prevision' | 'run' | 'circuit' | 'profile'
+export type MemberNavActive =
+  | 'dashboard'
+  | 'coach'
+  | 'goals'
+  | 'prevision'
+  | 'run'
+  | 'circuit'
+  | 'ambassador'
+  | 'profile'
 
 type Props = {
   active: MemberNavActive
@@ -12,6 +20,8 @@ type Props = {
   capabilities?: MeCapabilities
   /** Affiche le lien vers le panneau admin */
   isAdmin?: boolean
+  /** Affiche l’onglet Ambassadeur : seuls les comptes sous contrat l’ont */
+  isAmbassador?: boolean
   /** Prénom affiché dans la carte compte (bas du menu) */
   profileFirstName?: string | null
   /** Nom, pour les initiales de l’avatar */
@@ -47,6 +57,9 @@ const ICONS = {
     'M12 21a9 9 0 100-18 9 9 0 000 18zm0-3a6 6 0 100-12 6 6 0 000 12zm0-3a3 3 0 100-6 3 3 0 000 6z',
   admin:
     'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z',
+  /* Mégaphone : l’ambassadeur parle de NeuroRun autour de lui. */
+  ambassador:
+    'M10.34 15.84a48 48 0 00-5.37 2.17 1.5 1.5 0 01-2.12-1.37v-5.28a1.5 1.5 0 012.12-1.37 48 48 0 005.37 2.17m0 3.66V12.18m0 3.66a21.9 21.9 0 015.91 3.1c.86.59 2-.05 2-1.09V6.15c0-1.04-1.14-1.68-2-1.09a21.9 21.9 0 01-5.91 3.1m0 0v3.66m-3.4 7.63a1.5 1.5 0 01-2.86.44l-1.3-3.5',
 } as const
 
 type NavEntry = {
@@ -112,6 +125,7 @@ export function MemberPrimaryNav({
   onNavigate,
   capabilities,
   isAdmin,
+  isAmbassador,
   profileFirstName,
   profileLastName,
   planLabel,
@@ -156,6 +170,21 @@ export function MemberPrimaryNav({
             </div>
           )
         })}
+
+        {isAmbassador ? (
+          <div className="nav-group">
+            <p className="nav-group-label">Partenariat</p>
+            <Link
+              href="/ambassadeur/"
+              onClick={onNavigate}
+              aria-current={active === 'ambassador' ? 'page' : undefined}
+              className={`nav-item ${active === 'ambassador' ? 'nav-item--on' : ''}`}
+            >
+              <NavIcon d={ICONS.ambassador} />
+              <span className="min-w-0 flex-1 truncate">Ambassadeur</span>
+            </Link>
+          </div>
+        ) : null}
 
         {isAdmin ? (
           <div className="nav-group">

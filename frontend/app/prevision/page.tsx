@@ -45,16 +45,29 @@ function formatRaceTime(sec: number): string {
   return `${m}min ${rs.toString().padStart(2, '0')}s`
 }
 
-function dataSourceLabel(src: string): string {
-  switch (src) {
-    case 'bucket_median':
-      return 'Médiane d’allure sur tes sorties Strava (tranche de distance proche).'
+function dataSourceLabel(leg: RaceLegForecast): string {
+  const ref = leg.ref
+  if (ref) {
+    let date = ''
+    try {
+      date = new Date(ref.start_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+    } catch {
+      date = ''
+    }
+    const km = Number.isInteger(ref.distance_km) ? `${ref.distance_km} km` : `${ref.distance_km.toFixed(2).replace('.', ',')} km`
+    const kind = ref.race ? 'ta course' : 'ta sortie'
+    const name = ref.name ? ` « ${ref.name} »` : ''
+    return `D’après ${kind}${date ? ` du ${date}` : ''} : ${km} en ${formatRaceTime(ref.time_sec)}${name}, ramenée à cette distance.`
+  }
+  switch (leg.data_source) {
+    case 'best_effort':
+      return 'D’après tes meilleures performances récentes à cette distance.'
     case 'riegel_extrapolation':
-      return 'Extrapolation (formule Riegel) à partir d’une autre distance où tu as assez de données.'
+      return 'Extrapolation (formule Riegel) à partir de tes meilleures performances sur une autre distance.'
     case 'insufficient_data':
-      return 'Pas assez de sorties dans cette tranche pour estimer.'
+      return 'Pas assez de sorties pour estimer cette distance.'
     default:
-      return src
+      return leg.data_source
   }
 }
 
@@ -181,6 +194,7 @@ export default function PrevisionPage() {
         onClose={() => setSidebarOpen(false)}
         capabilities={me?.capabilities}
         isAdmin={me?.role === 'admin'}
+        isAmbassador={me?.is_ambassador}
         firstName={me?.first_name}
         lastName={me?.last_name}
       />
@@ -319,10 +333,10 @@ function LegDetail({ leg }: { leg: RaceLegForecast }) {
       </h4>
       {leg.target_hr_bpm != null && leg.hr_band_low != null && leg.hr_band_high != null ? (
         <p className="mt-2 text-[13px] leading-relaxed text-white/70">
-          D’après tes sorties Strava avec capteur FC sur des distances comparables : viser environ{' '}
+          D’après la FC de tes meilleures performances sur des distances comparables : viser environ{' '}
           <strong className="text-white">{Math.round(leg.target_hr_bpm)} bpm</strong>, avec une zone typique entre{' '}
           <strong className="text-white">{Math.round(leg.hr_band_low)}</strong> et{' '}
-          <strong className="text-white">{Math.round(leg.hr_band_high)}</strong> bpm (quartiles de ton historique,
+          <strong className="text-white">{Math.round(leg.hr_band_high)}</strong> bpm (mesurée sur tes efforts réels,
           pas une FC max théorique).
         </p>
       ) : (
@@ -333,7 +347,7 @@ function LegDetail({ leg }: { leg: RaceLegForecast }) {
       )}
 
       <p className="mt-3 text-[11px] text-white/30">
-        {dataSourceLabel(leg.data_source)}
+        {dataSourceLabel(leg)}
         {leg.runs_with_hr > 0 ? ` · ${leg.runs_with_hr} sortie(s) avec FC.` : ''}
       </p>
     </div>

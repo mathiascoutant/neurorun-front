@@ -1,11 +1,21 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { adminCreatePromo, adminDeletePromo, adminListPromos, adminPatchPromo, type PromoCodeRow } from '@/lib/api'
+import {
+  adminCreatePromo,
+  adminDeletePromo,
+  adminListPromos,
+  adminPatchPromo,
+  promoDiscountLabel,
+  promoKind,
+  type PromoCodeRow,
+  type PromoKind,
+} from '@/lib/api'
 import { getToken } from '@/lib/auth'
 import {
   Badge,
   CopyButton,
+  Segmented,
   EmptyState,
   ErrorBanner,
   Modal,
@@ -19,7 +29,15 @@ import {
 } from '@/components/admin/ui'
 import { formatDate, formatNumber, timeValue } from '@/components/admin/format'
 
-type SortKey = 'code' | 'percent_off' | 'uses' | 'created_at'
+type SortKey = 'code' | 'discount' | 'uses' | 'created_at'
+
+/**
+ * Valeur de tri d’une remise. Un pourcentage et des euros ne se comparent pas : on groupe
+ * donc par nature (pourcentages d’abord), puis par valeur au sein de chaque groupe.
+ */
+function discountSortValue(p: PromoCodeRow): number {
+  return promoKind(p) === 'amount' ? 1_000_000 + (p.amount_off_cents ?? 0) : p.percent_off
+}
 
 /** Un code épuisé reste « actif » en base mais ne s’applique plus : à distinguer. */
 function status(p: PromoCodeRow): { tone: 'ok' | 'warn' | 'danger'; label: string } {
@@ -68,8 +86,8 @@ export function AdminPromos({ onTotal }: { onTotal?: (n: number) => void }) {
       switch (sort.key) {
         case 'code':
           return a.code.localeCompare(b.code, 'fr') * dir
-        case 'percent_off':
-          return (a.percent_off - b.percent_off) * dir
+        case 'discount':
+          return (discountSortValue(a) - discountSortValue(b)) * dir
         case 'uses':
           return (a.uses - b.uses) * dir
         default:
@@ -160,7 +178,7 @@ export function AdminPromos({ onTotal }: { onTotal?: (n: number) => void }) {
             <thead>
               <tr>
                 <SortHeader id="code" label="Code" sort={sort} onSort={onSort} />
-                <SortHeader id="percent_off" label="Réduction" sort={sort} onSort={onSort} />
+                <SortHeader id="discount" label="Réduction" sort={sort} onSort={onSort} />
                 <SortHeader id="uses" label="Utilisations" sort={sort} onSort={onSort} />
                 <th scope="col">Statut</th>
                 <SortHeader id="created_at" label="Créé le" sort={sort} onSort={onSort} />
@@ -182,7 +200,7 @@ export function AdminPromos({ onTotal }: { onTotal?: (n: number) => void }) {
                       </span>
                     </td>
                     <td>
-                      <Badge tone="brand">−{p.percent_off} %</Badge>
+                      <Badge tone="brand">{promoDiscountLabel(p)}</Badge>
                     </td>
                     <td className="min-w-[9rem]">
                       <span className="num text-[12.5px] text-white/70">
@@ -298,10 +316,18 @@ function PromoForm({
   const notify = useNotify()
   const isEdit = promo != null
   const [code, setCode] = useState(promo?.code ?? '')
-  const [pct, setPct] = useState(promo?.percent_off ?? 10)
+  const [kind, setKind] = useState<PromoKind>(promo ? promoKind(promo) : 'percent')
+  const [pct, setPct] = useState(promo?.percent_off ? promo.percent_off : 10)
+  /* Saisie en euros, stockée en centimes : c’est un montant encaissé. */
+  const [amountEur, setAmountEur] = useState(
+    promo?.amount_off_cents ? String(promo.amount_off_cents / 100) : '5',
+  )
   const [maxUses, setMaxUses] = useState(promo?.max_uses ?? 0)
   const [active, setActive] = useState(promo?.active ?? true)
   const [busy, setBusy] = useState(false)
+
+  const amountCents = Math.round((Number(amountEur.replace(',', '.')) || 0) * 100)
+  const discountOk = kind === 'amount' ? amountCents > 0 : pct > 0 && pct <= 100
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -309,14 +335,19 @@ function PromoForm({
     if (!t) return
     setBusy(true)
     try {
+      const discount = {
+        kind,
+        percent_off: kind === 'percent' ? pct : 0,
+        amount_off_cents: kind === 'amount' ? amountCents : 0,
+        max_uses: maxUses,
+      }
       if (isEdit) {
-        await adminPatchPromo(t, promo.id, { percent_off: pct, max_uses: maxUses, active })
+        await adminPatchPromo(t, promo.id, { ...discount, active })
         notify('ok', `${promo.code} mis à jour.`)
       } else {
         await adminCreatePromo(t, {
           code: code.trim(),
-          percent_off: pct,
-          max_uses: maxUses,
+          ...discount,
           active,
           applicable_plans: [],
         })
@@ -339,7 +370,7 @@ function PromoForm({
         <p className="mt-1 text-[12.5px] text-white/45">
           {isEdit
             ? 'Le code lui-même ne peut pas être renommé : crée-en un nouveau si besoin.'
-            : 'La réduction s’applique au paiement, sur tous les paliers payants.'}
+            : 'La réduction s’applique au paiement, sur tous les paliers payants — en pourcentage ou en euros.'}
         </p>
 
         <div className="mt-4 space-y-3.5">
@@ -359,21 +390,56 @@ function PromoForm({
             />
           </div>
 
+          <div>
+            <span className="text-xs text-white/45">Nature de la remise</span>
+            <Segmented<PromoKind>
+              value={kind}
+              onChange={setKind}
+              label="Nature de la remise"
+              className="mt-1 !max-w-none"
+              options={[
+                { id: 'percent', label: 'Pourcentage' },
+                { id: 'amount', label: 'Montant en €' },
+              ]}
+            />
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="promo-pct" className="text-xs text-white/45">
-                Réduction (%)
-              </label>
-              <input
-                id="promo-pct"
-                className="field mt-1 !min-h-[46px] tabular-nums"
-                type="number"
-                min={0}
-                max={100}
-                value={pct}
-                onChange={(e) => setPct(Number(e.target.value))}
-              />
-            </div>
+            {kind === 'percent' ? (
+              <div>
+                <label htmlFor="promo-pct" className="text-xs text-white/45">
+                  Réduction (%)
+                </label>
+                <input
+                  id="promo-pct"
+                  className="field mt-1 !min-h-[46px] tabular-nums"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={pct}
+                  onChange={(e) => setPct(Number(e.target.value))}
+                />
+                <p className="mt-1 text-[11px] text-white/35">Retiré du prix de l’offre, chaque mois.</p>
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="promo-amount" className="text-xs text-white/45">
+                  Réduction (€)
+                </label>
+                <input
+                  id="promo-amount"
+                  className="field mt-1 !min-h-[46px] tabular-nums"
+                  type="text"
+                  inputMode="decimal"
+                  value={amountEur}
+                  onChange={(e) => setAmountEur(e.target.value.replace(/[^\d.,]/g, ''))}
+                  placeholder="5"
+                />
+                <p className="mt-1 text-[11px] text-white/35">
+                  Déduit du prix de l’offre. Un reste à payer entre 0 et 0,50 € est refusé par Stripe.
+                </p>
+              </div>
+            )}
             <div>
               <label htmlFor="promo-max" className="text-xs text-white/45">
                 Utilisations max.
@@ -409,7 +475,11 @@ function PromoForm({
           <button type="button" className="btn-quiet !min-h-[46px] cursor-pointer px-4 text-sm" onClick={onClose}>
             Annuler
           </button>
-          <button type="submit" className="btn-brand !min-h-[46px] cursor-pointer px-5 text-sm" disabled={busy || (!isEdit && !code.trim())}>
+          <button
+            type="submit"
+            className="btn-brand !min-h-[46px] cursor-pointer px-5 text-sm"
+            disabled={busy || !discountOk || (!isEdit && !code.trim())}
+          >
             {busy ? 'Envoi…' : isEdit ? 'Enregistrer' : 'Créer le code'}
           </button>
         </div>

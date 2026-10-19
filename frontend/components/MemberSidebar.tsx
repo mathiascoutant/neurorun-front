@@ -14,6 +14,8 @@ type Props = {
   onClose: () => void
   capabilities?: MeCapabilities
   isAdmin?: boolean
+  /** Contrat d’ambassadeur sur ce compte : ajoute l’onglet Ambassadeur */
+  isAmbassador?: boolean
   firstName?: string | null
   lastName?: string | null
   planLabel?: string | null
@@ -37,6 +39,7 @@ export function MemberSidebar({
   onClose,
   capabilities,
   isAdmin,
+  isAmbassador,
   firstName,
   lastName,
   planLabel,
@@ -48,6 +51,7 @@ export function MemberSidebar({
       onNavigate={onNavigate}
       capabilities={capabilities}
       isAdmin={isAdmin}
+      isAmbassador={isAmbassador}
       profileFirstName={firstName}
       profileLastName={lastName}
       planLabel={planLabel}
