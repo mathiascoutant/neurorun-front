@@ -22,22 +22,19 @@ export function GoalGuidance({ plan }: { plan: string }) {
   }
 
   return (
-    <div className="space-y-2.5">
-      {outline.sections.map((section) => {
+    <div className="chart-card overflow-hidden">
+      {outline.sections.map((section, i) => {
         const expanded = open === section.title
         return (
-          <div
-            key={section.title}
-            className="overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025]"
-          >
+          <div key={section.title} className={i > 0 ? 'border-t border-white/[0.06]' : ''}>
             <h3>
               <button
                 type="button"
                 aria-expanded={expanded}
                 onClick={() => setOpen(expanded ? null : section.title)}
-                className="flex min-h-[52px] w-full items-center justify-between gap-3 px-4 text-left transition hover:bg-white/[0.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange/60"
+                className="flex min-h-[56px] w-full cursor-pointer items-center justify-between gap-3 px-4 text-left sm:px-5 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange/60"
               >
-                <span className="font-display text-[14px] font-semibold text-white/92">
+                <span className="text-[15px] font-semibold text-white/90">
                   {section.title}
                 </span>
                 <svg
@@ -55,7 +52,7 @@ export function GoalGuidance({ plan }: { plan: string }) {
               </button>
             </h3>
             {expanded ? (
-              <div className="border-t border-white/[0.06] px-4 py-3.5">
+              <div className="px-4 pb-5 pt-1 sm:px-5">
                 <SimplePlanBody text={section.body} className="max-w-[72ch]" />
               </div>
             ) : null}

@@ -9,6 +9,7 @@ export type MemberNavActive =
   | 'prevision'
   | 'run'
   | 'circuit'
+  | 'boost'
   | 'ambassador'
   | 'profile'
 
@@ -55,6 +56,8 @@ const ICONS = {
     'M12 3.75c-3.75 0-6.75 2.25-6.75 5.25 0 3 3 5.25 6.75 8.25 3.75-3 6.75-5.25 6.75-8.25 0-3-3-5.25-6.75-5.25zm0 7.5a2.25 2.25 0 110-4.5 2.25 2.25 0 010 4.5z',
   goals:
     'M12 21a9 9 0 100-18 9 9 0 000 18zm0-3a6 6 0 100-12 6 6 0 000 12zm0-3a3 3 0 100-6 3 3 0 000 6z',
+  /* Éclair : la réaction qu’on envoie à la course d’un ami. */
+  boost: 'M13 2L4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z',
   admin:
     'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z',
   /* Mégaphone : l’ambassadeur parle de NeuroRun autour de lui. */
@@ -92,6 +95,10 @@ const GROUPS: { label: string; items: NavEntry[] }[] = [
       { key: 'goals', label: 'Objectifs', href: '/chat/?section=goals', icon: 'goals', capability: 'goals' },
       { key: 'prevision', label: 'Prévision', href: '/prevision/', icon: 'prevision', capability: 'forecast' },
     ],
+  },
+  {
+    label: 'Communauté',
+    items: [{ key: 'boost', label: 'Boost', href: '/boost/', icon: 'boost' }],
   },
 ]
 

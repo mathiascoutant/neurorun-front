@@ -10,9 +10,16 @@ import {
   getStravaActivityDetail,
 } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { withAlpha } from "@/lib/color";
 import { RunDetailPanel } from "@/components/RunDetailPanel";
+import { RouteThumb } from "@/components/RouteThumb";
+import { RunScoreCard } from "@/components/RunScoreCard";
 
 const PAGE_SIZE = 10;
+
+/** Teintes de provenance, comme dans l’app : glace NeuroRun, orange Strava. */
+const TINT_NEURORUN = "#67e8f9";
+const TINT_STRAVA = "#fc4c02";
 
 /** Clé stable d’une entrée du flux (les ids live et Strava vivent dans des espaces distincts). */
 function itemKey(r: RunHistoryFeedItem): string {
@@ -42,64 +49,49 @@ function formatPaceMinPerKm(secPerKm: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-/** Date et heure séparées : la ligne de titre reste courte sur mobile. */
-function splitWhen(iso: string): { day: string; time: string } {
+/** Jour d’une sortie, relatif tant qu’il reste lisible (« Hier », « il y a 3 j »). */
+function formatRelativeDay(iso: string): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return { day: iso, time: "" };
-  return {
-    day: d.toLocaleDateString("fr-FR", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-    }),
-    time: d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-  };
+  if (Number.isNaN(d.getTime())) return "—";
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOf(new Date()) - startOf(d)) / 86400000);
+  if (days === 0) return "Aujourd’hui";
+  if (days === 1) return "Hier";
+  if (days < 7) return `il y a ${days} j`;
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
-const ICONS = {
-  time: "M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z",
-  pace: "M13 2L4.09 12.91a1 1 0 00.77 1.64H11l-1 7.45 8.91-10.91a1 1 0 00-.77-1.64H12l1-7.45z",
-  heart:
-    "M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z",
-  elevation: "M3.75 19.5h16.5L14.25 7.5l-3.375 6-2.25-3-4.875 9z",
-} as const;
+/** Heure d’une sortie (« 18:45 »), lue dans le fuseau du navigateur. */
+function formatTimeOfDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
 
 /**
- * Mesure d'une sortie : une icône, une valeur.
- *
- * Les intitulés « TEMPS / ALLURE / FC MOY. / D+ » se répétaient sur chaque
- * ligne — soit quatre fois par sortie, quarante fois par écran — et donnaient à
- * la page l'allure d'un tableur. L'icône porte le sens une bonne fois, et
- * l'infobulle reste disponible pour lever un doute.
+ * Nom d’une sortie NeuroRun d’après l’heure de départ, à la manière dont
+ * Strava nomme les siennes : la liste web et l’app disent la même chose.
  */
-function Stat({
-  icon,
-  value,
-  unit,
-  label,
-}: {
-  icon: keyof typeof ICONS;
-  value: string;
-  unit?: string;
-  label: string;
-}) {
+function runNameFromTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Course";
+  const h = d.getHours();
+  if (h >= 5 && h < 11) return "Course matinale";
+  if (h >= 11 && h < 14) return "Course du midi";
+  if (h >= 14 && h < 18) return "Course de l’après-midi";
+  if (h >= 18 && h < 22) return "Course du soir";
+  return "Course de nuit";
+}
+
+/** Une mesure sous la distance : son intitulé, sa valeur, son unité. */
+function HistoryStat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={label}>
-      <svg
-        className="h-3.5 w-3.5 shrink-0 text-white/28"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.7}
-        aria-hidden
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" d={ICONS[icon]} />
-      </svg>
-      <span className="tabular-nums text-white/72">
+    <span className="min-w-0">
+      <span className="block text-[10px] leading-none text-white/35">{label}</span>
+      <span className="mt-1 block whitespace-nowrap font-display text-[15px] font-semibold tabular-nums text-white/92">
         {value}
-        {unit ? <span className="ml-0.5 text-white/38">{unit}</span> : null}
+        {unit ? <span className="ml-0.5 text-[11px] font-medium text-white/40">{unit}</span> : null}
       </span>
-      <span className="sr-only">{label}</span>
     </span>
   );
 }
@@ -108,8 +100,6 @@ type MonthGroup = {
   key: string;
   label: string;
   km: number;
-  /** Sortie la plus longue du mois — référence des barres de distance. */
-  maxKm: number;
   sec: number;
   items: RunHistoryFeedItem[];
 };
@@ -137,7 +127,6 @@ function groupByMonth(runs: RunHistoryFeedItem[]): MonthGroup[] {
           ? d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
           : "Date inconnue",
         km: 0,
-        maxKm: 0,
         sec: 0,
         items: [],
       };
@@ -148,7 +137,6 @@ function groupByMonth(runs: RunHistoryFeedItem[]): MonthGroup[] {
     g.items.push(r);
     g.km += km;
     g.sec += r.moving_sec;
-    if (km > g.maxKm) g.maxKm = km;
   }
   return groups;
 }
@@ -354,109 +342,106 @@ export function LiveRunHistory({
                 </span>
               </div>
 
-              <ul className="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.012]">
+              <ul className="space-y-2.5">
                 {group.items.map((r) => {
                   const key = itemKey(r);
                   const expanded = openId === key;
                   const detail = details[key];
                   const dLoading = detailLoading === key;
                   const isStrava = r.source === "strava";
-                  const when = splitWhen(itemDate(r));
+                  const when = itemDate(r);
                   const hasHr = r.avg_heartrate != null && r.avg_heartrate > 0;
                   const hasElev = r.elevation_gain_m != null && r.elevation_gain_m > 0;
+                  const km = r.distance_m / 1000;
+                  /* Une sortie NeuroRun prend un nom d’après l’heure, comme
+                     Strava nomme les siennes : la provenance passe au surtitre. */
+                  const title = r.name?.trim() ? r.name : runNameFromTime(when);
+                  /* La couleur de provenance (glace NeuroRun, orange Strava)
+                     teinte toute la carte : fond, surtitre, unité, tracé. */
+                  const tint = isStrava ? TINT_STRAVA : TINT_NEURORUN;
+                  const sub = [
+                    formatRelativeDay(when),
+                    formatTimeOfDay(when),
+                    hasHr ? `${Math.round(r.avg_heartrate!)} bpm` : "",
+                    hasElev ? `+${Math.round(r.elevation_gain_m!)} m` : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
 
                   return (
-                    <li
-                      key={key}
-                      className="border-b border-white/[0.05] last:border-b-0"
-                    >
+                    <li key={key}>
                       <button
                         type="button"
                         onClick={() => void toggleOpen(r)}
                         aria-expanded={expanded}
-                        className={`group/run relative flex w-full cursor-pointer items-center gap-3 py-3 pl-4 pr-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange/50 sm:gap-5 sm:pl-5 sm:pr-4 ${
-                          expanded ? "bg-white/[0.05]" : "hover:bg-white/[0.03]"
-                        }`}
+                        className="group/run relative flex w-full cursor-pointer items-center gap-4 overflow-hidden rounded-2xl border p-4 text-left transition hover:brightness-[1.12] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/50"
+                        style={{
+                          borderColor: withAlpha(tint, expanded ? 0.4 : 0.18),
+                          backgroundColor: "#0d0f16",
+                        }}
                       >
-                        {/* Liseré de source, révélé au survol : couleur sans pastille flottante. */}
                         <span
                           aria-hidden
-                          className={`absolute inset-y-1.5 left-0 w-[3px] rounded-r-full transition-opacity duration-200 ${
-                            isStrava ? "bg-brand-orange" : "bg-brand-ice"
-                          } ${expanded ? "opacity-100" : "opacity-0 group-hover/run:opacity-60"}`}
+                          className="pointer-events-none absolute inset-0"
+                          style={{
+                            backgroundImage: `linear-gradient(135deg, ${withAlpha(tint, 0.14)} 0%, ${withAlpha(tint, 0.04)} 55%, rgba(13, 15, 22, 0.6) 100%)`,
+                          }}
                         />
 
-                        {/*
-                          Ancre de lecture : la distance porte la ligne. La barre
-                          sous le chiffre la situe face à la plus longue sortie du
-                          mois — on voit d'un coup d'œil les grosses séances.
-                        */}
-                        <div className="w-[74px] shrink-0 sm:w-[84px]">
-                          <p className="font-display text-[21px] font-bold leading-none tracking-[-0.025em] tabular-nums text-white sm:text-[23px]">
-                            {(r.distance_m / 1000).toFixed(2).replace(".", ",")}
-                            <span className="ml-1 text-[11px] font-semibold text-white/35">km</span>
+                        <div className="relative min-w-0 flex-1">
+                          <p
+                            className="text-[10px] font-semibold uppercase tracking-[0.08em]"
+                            style={{ color: tint }}
+                          >
+                            {isStrava
+                              ? "Strava"
+                              : r.session_type === "endurance"
+                                ? "NeuroRun · Endurance"
+                                : "NeuroRun"}
                           </p>
-                          <div className="mt-2 h-[3px] w-full overflow-hidden rounded-full bg-white/[0.07]">
-                            <div
-                              className="h-full rounded-full transition-[width] duration-500"
-                              style={{
-                                width: `${Math.max(6, group.maxKm > 0 ? (r.distance_m / 1000 / group.maxKm) * 100 : 0)}%`,
-                                backgroundImage: isStrava
-                                  ? "linear-gradient(90deg, #c73d00, #fc4c02)"
-                                  : "linear-gradient(90deg, #0f9cb8, #67e8f9)",
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p className="flex items-center gap-1.5 text-[14px] font-medium leading-tight text-white/92">
-                            <span className="truncate">
-                              {isStrava && r.name ? r.name : when.day}
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="truncate text-[15px] font-medium leading-tight text-white/92">
+                              {title}
                             </span>
                             {r.is_interval ? (
-                              <span className="shrink-0 rounded-full border border-emerald-300/30 bg-emerald-300/[0.1] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.06em] text-emerald-200">
+                              <span className="shrink-0 rounded-full border border-emerald-300/30 bg-emerald-300/[0.12] px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
                                 Fractionné
                               </span>
                             ) : null}
+                          </div>
+                          <p className="mt-0.5 truncate text-[11px] tabular-nums text-white/35">
+                            {sub}
                           </p>
-                          <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[12px] leading-none">
-                            <span className="whitespace-nowrap tabular-nums text-white/35">
-                              {isStrava && r.name ? `${when.day} · ` : ""}
-                              {when.time}
+
+                          {/* La distance porte la carte ; allure et temps
+                              suivent, un cran en dessous. */}
+                          <p className="mt-3 flex items-baseline gap-1 font-display text-[30px] font-bold leading-none tracking-[-0.025em] tabular-nums text-white">
+                            {km.toFixed(2).replace(".", ",")}
+                            <span className="text-[16px] font-semibold" style={{ color: tint }}>
+                              km
                             </span>
-                            <Stat icon="time" value={formatClock(r.moving_sec)} label="Temps en mouvement" />
-                            <Stat
-                              icon="pace"
+                          </p>
+                          <div className="mt-2.5 flex items-start gap-6">
+                            <HistoryStat
+                              label="Allure"
                               value={formatPaceMinPerKm(r.avg_pace_sec_per_km)}
                               unit="/km"
-                              label={
-                                r.is_interval
-                                  ? "Allure moyenne, récupérations comprises — ouvre la sortie pour l’allure des efforts"
-                                  : "Allure moyenne"
-                              }
                             />
-                            {hasHr ? (
-                              <Stat
-                                icon="heart"
-                                value={String(Math.round(r.avg_heartrate!))}
-                                unit="bpm"
-                                label="Fréquence cardiaque moyenne"
-                              />
-                            ) : null}
-                            {hasElev ? (
-                              <Stat
-                                icon="elevation"
-                                value={`+${Math.round(r.elevation_gain_m!)}`}
-                                unit="m"
-                                label="Dénivelé positif"
-                              />
-                            ) : null}
+                            <HistoryStat label="Temps" value={formatClock(r.moving_sec)} />
                           </div>
                         </div>
 
+                        {/* Le tracé, sur fond neutre ; sans GPS (tapis, course
+                            virtuelle), la vignette garde sa place. */}
+                        <RouteThumb
+                          polyline={r.route_polyline}
+                          color={tint}
+                          size={112}
+                          className="relative"
+                        />
+
                         <svg
-                          className={`h-4 w-4 shrink-0 text-white/20 transition-all duration-200 group-hover/run:text-white/55 ${
+                          className={`relative hidden h-4 w-4 shrink-0 text-white/20 transition-all duration-200 group-hover/run:text-white/55 sm:block ${
                             expanded ? "rotate-90 text-white/55" : ""
                           }`}
                           viewBox="0 0 24 24"
@@ -470,7 +455,10 @@ export function LiveRunHistory({
                       </button>
 
                       {expanded ? (
-                        <div className="border-t border-white/[0.06] bg-[#0b0d13] px-3 py-4 sm:px-5">
+                        <div className="mt-2 space-y-3 rounded-2xl border border-white/[0.06] bg-[#0b0d13] px-3 py-4 sm:px-5">
+                          {/* La note ne vaut que pour une course NeuroRun : Strava
+                              n’en fournit ni le type de séance ni les intentions. */}
+                          {r.source === "live" && r.id ? <RunScoreCard runId={r.id} /> : null}
                           {dLoading ? (
                             <div className="flex items-center gap-2 py-2 text-[13px] text-white/45">
                               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-brand-orange/30 border-t-brand-orange" />

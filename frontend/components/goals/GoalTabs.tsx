@@ -68,7 +68,7 @@ export function GoalTabs({
     <div
       role="tablist"
       aria-label="Sections de l’objectif"
-      className="flex gap-1 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-1"
+      className="app-segment"
     >
       {GOAL_TABS.map((tab, i) => {
         const selected = tab.id === active
@@ -87,23 +87,12 @@ export function GoalTabs({
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(tab.id)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl px-3 text-[13px] font-medium transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/60 ${
-              selected
-                ? 'bg-white/[0.1] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
-                : 'text-white/50 hover:bg-white/[0.05] hover:text-white/80'
-            }`}
+            className={`app-segment-item inline-flex cursor-pointer items-center justify-center gap-2 ${selected ? 'app-segment-item--on' : ''}`}
           >
-            <svg
-              className="h-[18px] w-[18px] shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              aria-hidden
-            >
+            <svg className="h-4 w-4 shrink-0 max-sm:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" d={tab.icon} />
             </svg>
-            <span className="truncate max-[420px]:sr-only">{tab.label}</span>
+            <span>{tab.label}</span>
             {badge ? (
               <span className="rounded-full bg-brand-orange/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-brand-orange">
                 {badge}

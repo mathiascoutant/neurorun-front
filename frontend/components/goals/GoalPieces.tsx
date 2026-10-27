@@ -1,60 +1,62 @@
 'use client'
 
+import type { ReactNode } from 'react'
+import { Sparkline } from '@/components/dashboard/Sparkline'
+import { StatTile } from '@/components/dashboard/StatTile'
+import { SERIES } from '@/components/dashboard/chartTheme'
 import type { Goal } from '@/lib/api'
-import { distanceAccent, formatCountdown, goalTimeline, plannedVolumeKm } from '@/lib/goalStats'
+import { TERRAIN_LABELS, formatCountdown, goalTimeline, plannedVolumeKm } from '@/lib/goalStats'
 
 /*
- * Blocs de la page Objectifs — repris de `GoalsScreen` de l’app mobile :
- * CTA de création, bandeau de synthèse, état vide, carte d’objectif à anneau
- * de progression, et fil d’étapes de l’assistant.
+ * Blocs de la page Objectifs, dans le langage du tableau de bord : surtitre et
+ * titre en police d'affichage, tuiles de chiffres-clés, cartes à mini-tracé.
+ * Une préparation se lit comme une série de semaines — d'où la courbe du volume
+ * prévu sur chaque carte.
  */
 
-/* ---------------------------------------------------------- anneau de progrès */
+/** Échéance lisible : « 3 nov. 2026 ». */
+export function formatDeadline(d: Date | null, month: 'short' | 'long' = 'short'): string {
+  if (!d) return '—'
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month, year: 'numeric' })
+}
 
-function ProgressRing({
-  ratio,
-  color,
-  size = 54,
-  thickness = 5,
-}: {
-  ratio: number
-  color: string
-  size?: number
-  thickness?: number
-}) {
-  const r = (size - thickness) / 2
-  const c = 2 * Math.PI * r
-  const pct = Math.max(0, Math.min(1, ratio))
+/** Chrono visé tel que saisi ; un nombre seul se lit en minutes (« 50 » → « 50 min »). */
+export function formatTarget(raw: string | undefined | null): string {
+  const s = raw?.trim() ?? ''
+  return /^\d{1,3}$/.test(s) ? `${s} min` : s
+}
+
+/** Volume prévu de chaque semaine, de la première à la dernière. */
+export function weeklyVolume(goal: Goal): number[] {
+  const weeks = Array.from({ length: Math.max(1, goal.weeks || 0) }, () => 0)
+  for (const s of goal.planned_sessions ?? []) {
+    const i = Math.min(weeks.length, Math.max(1, s.week)) - 1
+    if (Number.isFinite(s.distance_km)) weeks[i] += s.distance_km
+  }
+  return weeks
+}
+
+/** Surtitre + titre, comme en tête du tableau de bord. */
+export function PageHeading({ kicker, title, action }: { kicker: string; title: string; action?: ReactNode }) {
   return (
-    <span className="relative inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90" aria-hidden>
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="rgba(255,255,255,0.07)"
-          strokeWidth={thickness}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth={thickness}
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - pct)}
-        />
-      </svg>
-      <span className="absolute inset-0 flex items-baseline justify-center gap-px">
-        <span className="self-center font-display text-sm font-semibold text-white">
-          {Math.round(pct * 100)}
-        </span>
-        <span className="self-center text-[9px] text-white/38">%</span>
-      </span>
-    </span>
+    <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium uppercase leading-none tracking-[0.14em] text-white/38">{kicker}</p>
+        <h2 className="mt-2 truncate font-display text-[1.6rem] font-bold leading-8 tracking-[-0.02em] text-white sm:text-[1.75rem]">
+          {title}
+        </h2>
+      </div>
+      {action}
+    </div>
+  )
+}
+
+export function SectionTitle({ children, hint }: { children: ReactNode; hint?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 pt-1">
+      <h2 className="font-display text-[17px] font-semibold tracking-[-0.01em] text-white">{children}</h2>
+      {hint ? <p className="hidden text-[12px] text-white/38 sm:block">{hint}</p> : null}
+    </div>
   )
 }
 
@@ -62,67 +64,113 @@ function ProgressRing({
 
 export function CreateGoalCta({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-[76px] w-full items-center gap-3 rounded-[20px] p-4 text-left transition hover:brightness-110"
-      style={{
-        backgroundImage: 'linear-gradient(135deg, #fc4c02 0%, #c73d00 100%)',
-        boxShadow: '0 8px 24px rgba(252, 76, 2, 0.28)',
-      }}
-    >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/[0.18]">
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} aria-hidden>
-          <path strokeLinecap="round" d="M12 5v14M5 12h14" />
-        </svg>
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-display text-lg font-semibold leading-tight tracking-[-0.2px] text-white">
-          Nouvel objectif
-        </span>
-        <span className="mt-0.5 block text-xs text-white/80">
-          Plan d’entraînement généré sur mesure
-        </span>
-      </span>
-      <span className="shrink-0 text-white/75">
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
-        </svg>
-      </span>
+    <button type="button" onClick={onClick} className="btn-brand min-h-[44px] cursor-pointer px-4 text-[14px]">
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
+        <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+      </svg>
+      Nouvel objectif
     </button>
   )
 }
 
-/* --------------------------------------------------------- bandeau de synthèse */
+/* ------------------------------------------------------- chiffres-clés liste */
 
-export function GoalSummaryStrip({
-  active,
-  done,
-  nextDays,
-}: {
-  active: number
-  done: number
-  nextDays: number | null
-}) {
-  const cells = [
-    { value: String(active), label: 'En cours' },
-    { value: nextDays == null ? '—' : formatCountdown(nextDays), label: 'Prochaine échéance' },
-    { value: String(done), label: 'Terminés' },
-  ]
+export function GoalsSummary({ active, finished }: { active: Goal[]; finished: number }) {
+  const next = active[0] ?? null
+  const t = next ? goalTimeline(next) : null
+  const volume = active.reduce((sum, g) => sum + plannedVolumeKm(g.planned_sessions ?? []), 0)
   return (
-    <div className="flex items-center rounded-2xl border border-white/[0.08] bg-[#0d0f16] py-3">
-      {cells.map((c, i) => (
-        <div key={c.label} className="flex flex-1 items-center">
-          {i > 0 ? <span className="h-7 w-px shrink-0 bg-white/[0.08]" /> : null}
-          <div className="flex flex-1 flex-col items-center gap-0.5 px-2 text-center">
-            <span className="font-display text-[19px] font-semibold leading-6 tracking-[-0.3px] text-white/92">
-              {c.value}
-            </span>
-            <span className="text-[11px] leading-[14px] text-white/38">{c.label}</span>
-          </div>
-        </div>
-      ))}
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <StatTile
+        accent
+        label="Prochaine course"
+        value={t?.daysLeft != null ? String(t.daysLeft) : '—'}
+        unit={t?.daysLeft != null ? (t.daysLeft > 1 ? 'jours' : 'jour') : undefined}
+        hint={next && t ? `${next.distance_label} · ${formatDeadline(t.end)}` : 'Aucune course prévue'}
+      />
+      <StatTile label="En préparation" value={String(active.length)} hint={active.length > 1 ? 'objectifs actifs' : 'objectif actif'} />
+      <StatTile label="Volume prévu" value={String(Math.round(volume))} unit="km" hint="sur tes plans en cours" />
+      <StatTile label="Terminés" value={String(finished)} hint={finished > 1 ? 'courses passées' : 'course passée'} />
     </div>
+  )
+}
+
+/* ------------------------------------------------------- carte d’un objectif */
+
+export function GoalCard({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
+  const t = goalTimeline(goal)
+  const percent = Math.round(t.ratio * 100)
+  const weeks = weeklyVolume(goal)
+  const volume = weeks.reduce((a, b) => a + b, 0)
+  const thisWeek = weeks[Math.min(weeks.length, t.currentWeek) - 1] ?? 0
+  const target = formatTarget(goal.target_time)
+  const urgent = !t.finished && t.daysLeft != null && t.daysLeft <= 14
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="chart-card group cursor-pointer text-left transition-colors duration-200 hover:border-white/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/50"
+    >
+      <div className="flex items-start justify-between gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
+        <div className="min-w-0">
+          <p className="stat-label">
+            {TERRAIN_LABELS[goal.terrain]} · {formatDeadline(t.end)}
+          </p>
+          <h3 className="mt-2 truncate font-display text-[22px] font-bold leading-7 tracking-[-0.02em] text-white">
+            {goal.distance_label}
+            {target ? <span className="ml-2 text-[15px] font-semibold text-white/42">en {target}</span> : null}
+          </h3>
+        </div>
+        <span
+          className={`stat-delta shrink-0 ${urgent ? '!border-brand-orange/35 !bg-brand-orange/[0.12] !text-[#ff8a4c]' : ''}`}
+        >
+          {t.finished ? 'Terminé' : formatCountdown(t.daysLeft)}
+        </span>
+      </div>
+
+      {volume > 0 ? (
+        <div className="mt-3 px-4 sm:px-5">
+          <Sparkline
+            values={weeks}
+            color={t.finished ? 'rgba(255,255,255,0.4)' : SERIES.brand}
+            ariaLabel={`Volume prévu par semaine sur ${weeks.length} semaines`}
+          />
+        </div>
+      ) : null}
+
+      <div className="mt-3 px-4 sm:px-5">
+        <div className="flex items-baseline justify-between text-[12px]">
+          <span className="text-white/44">
+            Semaine {t.currentWeek} sur {t.totalWeeks}
+          </span>
+          <span className="font-semibold tabular-nums text-white/80">{percent} %</span>
+        </div>
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${Math.max(2, percent)}%`,
+              backgroundImage: t.finished ? undefined : 'linear-gradient(90deg, #c73d00, #fc4c02)',
+              backgroundColor: t.finished ? 'rgba(255,255,255,0.35)' : undefined,
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 border-t border-white/[0.06]">
+        {[
+          { label: 'Cette semaine', value: thisWeek > 0 ? `${Math.round(thisWeek)} km` : '—' },
+          { label: 'Séances', value: `${goal.sessions_per_week} / sem` },
+          { label: 'Volume', value: volume > 0 ? `${Math.round(volume)} km` : '—' },
+        ].map((c, i) => (
+          <div key={c.label} className={`min-w-0 px-4 py-3 sm:px-5 ${i > 0 ? 'border-l border-white/[0.06]' : ''}`}>
+            <p className="truncate text-[11px] text-white/40">{c.label}</p>
+            <p className="mt-0.5 truncate font-display text-[15px] font-semibold tabular-nums text-white">{c.value}</p>
+          </div>
+        ))}
+      </div>
+    </button>
   )
 }
 
@@ -130,137 +178,32 @@ export function GoalSummaryStrip({
 
 const EMPTY_BENEFITS = [
   'Plan hebdomadaire adapté à ton niveau',
-  'Calendrier de séances et suivi d’assiduité',
+  'Séances détaillées avec allures cibles',
   'Coach disponible pour ajuster en route',
 ]
 
-export function GoalsEmptyState() {
+export function GoalsEmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <section className="relative overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#0d0f16] px-5 py-8 text-center">
-      <span
-        className="pointer-events-none absolute inset-x-0 top-0 h-[130px]"
-        style={{ backgroundImage: 'linear-gradient(rgba(252,76,2,0.10), transparent)' }}
-        aria-hidden
-      />
-      <span className="relative mx-auto mb-2 flex h-[68px] w-[68px] items-center justify-center rounded-full border border-brand-orange/28 bg-brand-orange/[0.12]">
-        <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="#fc4c02" strokeWidth={1.8} aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 21V4m0 0l10 3.5L4 11" />
-        </svg>
-      </span>
-      <h3 className="relative font-display text-xl font-semibold text-white/92">
-        Aucun objectif pour l’instant
-      </h3>
-      <p className="relative mx-auto mt-2 max-w-md text-[15px] leading-[22px] text-white/60">
-        Définis une course et une fenêtre d’entraînement : le coach construit le plan, séance par séance.
+    <section className="app-hero p-6 sm:p-8">
+      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-brand-orange">Objectifs</p>
+      <h3 className="mt-2 font-display text-[24px] font-bold tracking-[-0.02em] text-white">Prépare ta prochaine course</h3>
+      <p className="mt-2 max-w-lg text-[15px] leading-[23px] text-white/55">
+        Choisis une distance et une date : le coach construit ton plan, séance par séance.
       </p>
-      <div className="relative mx-auto mt-4 max-w-md space-y-2 border-t border-white/[0.08] pt-4 text-left">
+      <ul className="mt-5 grid gap-2.5 sm:grid-cols-3">
         {EMPTY_BENEFITS.map((line) => (
-          <div key={line} className="flex items-center gap-3">
-            <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-brand-orange/[0.12]">
-              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="#fc4c02" strokeWidth={3} aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </span>
-            <span className="flex-1 text-[13px] leading-[19px] text-white/60">{line}</span>
-          </div>
+          <li key={line} className="flex items-start gap-2.5 text-[13px] leading-[19px] text-white/70">
+            <svg className="mt-0.5 h-4 w-4 shrink-0 text-brand-orange" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            {line}
+          </li>
         ))}
+      </ul>
+      <div className="mt-6">
+        <CreateGoalCta onClick={onCreate} />
       </div>
     </section>
-  )
-}
-
-/* ------------------------------------------------------- carte d’un objectif */
-
-export function GoalCard({
-  goal,
-  selected,
-  onOpen,
-}: {
-  goal: Goal
-  selected: boolean
-  onOpen: () => void
-}) {
-  const timeline = goalTimeline(goal)
-  const accent = distanceAccent(goal.distance_km)
-  const percent = Math.round(timeline.ratio * 100)
-  const volume = plannedVolumeKm(goal.planned_sessions ?? [])
-  const targetTime = goal.target_time?.trim() ?? ''
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-current={selected ? 'true' : undefined}
-      className={`relative w-full overflow-hidden rounded-[20px] border p-4 pl-5 text-left transition ${
-        selected
-          ? 'border-white/25 bg-[#171b26]'
-          : 'border-white/[0.08] bg-[#13161f] hover:border-white/[0.18] hover:bg-[#171b26]'
-      }`}
-    >
-      <span
-        className="absolute inset-y-0 left-0 w-[3px]"
-        style={{ backgroundColor: accent }}
-        aria-hidden
-      />
-
-      <span className="flex items-center gap-3">
-        <ProgressRing ratio={timeline.ratio} color={accent} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-[17px] font-semibold text-white/95">
-            {goal.distance_label}
-          </span>
-          <span className="mt-0.5 block truncate text-xs text-white/38">
-            {goal.weeks} sem · {goal.sessions_per_week} séances/sem
-          </span>
-        </span>
-        <span className="flex shrink-0 items-center gap-1.5">
-          <span
-            className="rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-            style={
-              timeline.finished
-                ? {
-                    borderColor: 'rgba(255,255,255,0.12)',
-                    backgroundColor: 'rgba(255,255,255,0.06)',
-                    color: 'rgba(255,255,255,0.6)',
-                  }
-                : { borderColor: `${accent}47`, backgroundColor: `${accent}1f`, color: accent }
-            }
-          >
-            {formatCountdown(timeline.daysLeft)}
-          </span>
-          <span className="text-white/20">
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
-            </svg>
-          </span>
-        </span>
-      </span>
-
-      <span className="mt-3 block h-1.5 w-full overflow-hidden rounded-full bg-white/[0.07]">
-        <span
-          className="block h-full rounded-full"
-          style={{
-            width: `${Math.max(2, percent)}%`,
-            backgroundImage: `linear-gradient(90deg, ${accent}66, ${accent})`,
-          }}
-        />
-      </span>
-
-      <span className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[11px] text-white/38">
-          Semaine {timeline.currentWeek} sur {timeline.totalWeeks}
-        </span>
-        <span className="flex items-center gap-2">
-          {volume > 0 ? (
-            <span className="text-[11px] text-white/38">{Math.round(volume)} km au plan</span>
-          ) : null}
-          {volume > 0 && targetTime ? (
-            <span className="h-0.5 w-0.5 rounded-full bg-white/20" aria-hidden />
-          ) : null}
-          {targetTime ? <span className="text-[11px] text-brand-ice/90">{targetTime}</span> : null}
-        </span>
-      </span>
-    </button>
   )
 }
 
@@ -268,48 +211,51 @@ export function GoalCard({
 
 export const WIZARD_LABELS = ['Distance', 'Réglages', 'Validation'] as const
 
-export function WizardSteps({ current }: { current: 1 | 2 | 3 }) {
+/** Progression de l'assistant : trois segments, les étapes passées restent cliquables. */
+export function WizardSteps({
+  current,
+  onSelect,
+}: {
+  current: 1 | 2 | 3
+  onSelect?: (step: 1 | 2 | 3) => void
+}) {
   return (
-    <div className="flex items-start justify-center">
+    <ol className="grid grid-cols-3 gap-3" aria-label="Étapes">
       {WIZARD_LABELS.map((label, i) => {
         const index = (i + 1) as 1 | 2 | 3
         const done = index < current
         const on = index === current
+        const clickable = done && onSelect != null
         return (
-          <div key={label} className="flex items-start">
-            {i > 0 ? (
+          <li key={label}>
+            <button
+              type="button"
+              disabled={!clickable}
+              onClick={() => (clickable ? onSelect(index) : undefined)}
+              aria-current={on ? 'step' : undefined}
+              className="group w-full cursor-pointer text-left disabled:cursor-default"
+            >
               <span
-                className={`mt-[13px] h-0.5 w-10 rounded-full sm:w-16 ${
-                  index <= current ? 'bg-brand-orange' : 'bg-white/[0.08]'
-                }`}
+                className={`block h-1 rounded-full transition-colors ${done || on ? 'bg-brand-orange' : 'bg-white/[0.08]'}`}
                 aria-hidden
               />
-            ) : null}
-            <div className="flex w-[84px] flex-col items-center gap-1.5">
               <span
-                className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold ${
-                  done
-                    ? 'border-brand-orange bg-brand-orange text-white'
-                    : on
-                      ? 'border-brand-orange bg-brand-orange/[0.12] text-brand-orange'
-                      : 'border-white/[0.08] bg-white/[0.06] text-white/38'
+                className={`mt-2 flex items-center gap-1.5 text-[12px] ${
+                  on ? 'font-semibold text-white' : done ? 'text-white/65 group-hover:text-white' : 'text-white/38'
                 }`}
               >
+                <span className="tabular-nums text-white/35">{index}</span>
+                {label}
                 {done ? (
-                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden>
+                  <svg className="h-3.5 w-3.5 text-brand-orange" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
-                ) : (
-                  index
-                )}
+                ) : null}
               </span>
-              <span className={`text-[11px] ${on ? 'font-semibold text-white/92' : 'text-white/38'}`}>
-                {label}
-              </span>
-            </div>
-          </div>
+            </button>
+          </li>
         )
       })}
-    </div>
+    </ol>
   )
 }

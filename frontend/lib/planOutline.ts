@@ -110,7 +110,8 @@ export type PlanSessionBlock = {
   body: string
 };
 
-const RE_SESSION = /^\s*(?:[-*]\s*)?(?:\*\*)?\s*(séance\s*\d{1,2}|jour\s*\d{1,2})\b/i
+// Une séance s'annonce en puce, en gras ou en liste numérotée (« 1. **Séance 1 : … »).
+const RE_SESSION = /^\s*(?:[-*]\s*|\d{1,2}[.)]\s*)?(?:\*\*)?\s*(séance\s*\d{1,2}|jour\s*\d{1,2})\b/i
 
 export function splitWeekSessions(weekBody: string): PlanSessionBlock[] {
   const lines = weekBody.split('\n')

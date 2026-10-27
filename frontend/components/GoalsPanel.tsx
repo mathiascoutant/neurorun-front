@@ -1,19 +1,24 @@
 'use client'
 
 import Link from 'next/link'
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { GoalTrainingCalendar } from '@/components/GoalTrainingCalendar'
 import { GoalDetailHeader } from '@/components/goals/GoalDetailHeader'
 import { GoalGuidance } from '@/components/goals/GoalGuidance'
 import { GoalProgram } from '@/components/goals/GoalProgram'
+import { FeasibilityReview } from '@/components/goals/FeasibilityReview'
 import { GoalTabs, type GoalTabId } from '@/components/goals/GoalTabs'
+import { RaceDatePicker } from '@/components/goals/RaceDatePicker'
 import { ProgressRing } from '@/components/ProgressRing'
 import { SimplePlanBody } from '@/components/SimplePlanBody'
 import {
   CreateGoalCta,
   GoalCard,
-  GoalSummaryStrip,
+  formatTarget,
   GoalsEmptyState,
+  GoalsSummary,
+  PageHeading,
+  SectionTitle,
   WizardSteps,
 } from '@/components/goals/GoalPieces'
 import {
@@ -25,32 +30,65 @@ import {
   listGoals,
   previewGoalFeasibility,
   replanGoalWithStravaStreaming,
+  type FeasibilityFacts,
   type Goal,
   type GoalCoachAction,
+  type GoalTerrain,
   type PlanProgress,
 } from '@/lib/api'
 import { getToken } from '@/lib/auth'
-import { distanceAccent, goalTimeline } from '@/lib/goalStats'
+import { TERRAIN_LABELS, goalTimeline, isoDay, weeksUntil } from '@/lib/goalStats'
 
 /** Distances proposées, avec la durée de préparation par défaut (identique à l’app). */
 const DISTANCES: { km: number; label: string; hint: string; weeks: number }[] = [
-  { km: 5, label: '5K', hint: 'Vitesse & régularité', weeks: 8 },
-  { km: 10, label: '10K', hint: 'Endurance courte', weeks: 10 },
-  { km: 21, label: 'Semi', hint: '21,1 km', weeks: 12 },
-  { km: 42, label: 'Marathon', hint: '42,2 km', weeks: 16 },
+  { km: 5, label: '5K', hint: 'Vitesse & régularité · 5 km', weeks: 8 },
+  { km: 10, label: '10K', hint: 'Endurance courte · 10 km', weeks: 10 },
+  { km: 21, label: 'Semi', hint: 'Semi-marathon · 21,1 km', weeks: 12 },
+  { km: 42, label: 'Marathon', hint: 'Endurance longue · 42,2 km', weeks: 16 },
 ]
 
-const WEEKS_MIN = 4
+/** Terrains proposés — le plan généré en tient compte (dénivelé, côtes, marche). */
+const TERRAINS: { id: GoalTerrain; hint: string }[] = [
+  { id: 'road', hint: 'Bitume, profil roulant : tout se joue à l’allure (min/km).' },
+  { id: 'trail', hint: 'Chemins et dénivelé : côtes, descentes, marche en montée.' },
+]
+
+const WEEKS_MIN = 2
 const WEEKS_MAX = 52
 const SESSIONS_MIN = 1
 const SESSIONS_MAX = 7
 
+/** La durée de prépa se dit de deux façons ; l’API, elle, ne connaît que les semaines. */
+type DurationMode = 'weeks' | 'date'
+
+const DURATION_MODES: { id: DurationMode; label: string }[] = [
+  { id: 'weeks', label: 'Nombre de semaines' },
+  { id: 'date', label: 'Date de la course' },
+]
+
 type Step = 1 | 2 | 3
 
+/** Bornes du champ date, déduites des semaines acceptées par l’API. */
+function raceDateBounds(now: Date = new Date()): { min: string; max: string } {
+  const day = (offset: number) => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset)
+    return isoDay(d)
+  }
+  return { min: day(WEEKS_MIN * 7), max: day(WEEKS_MAX * 7) }
+}
+
+/** Chronos proposés selon la distance : un point de départ, que l’on peut réécrire. */
+const TARGET_SUGGESTIONS: Record<number, string[]> = {
+  5: ['20 min', '25 min', '30 min'],
+  10: ['45 min', '50 min', '1h'],
+  21: ['1h45', '2h', '2h15'],
+  42: ['3h30', '4h', '4h30'],
+}
+const TARGET_FINISH = 'Finir sans chrono précis'
+
 /** Incrémenteur − / + : plus sûr qu’un champ libre pour une valeur bornée. */
-function Stepper({
+function StepperControl({
   label,
-  hint,
   value,
   unit,
   min,
@@ -58,7 +96,6 @@ function Stepper({
   onChange,
 }: {
   label: string
-  hint: string
   value: number
   unit: string
   min: number
@@ -66,44 +103,55 @@ function Stepper({
   onChange: (v: number) => void
 }) {
   const btn =
-    'flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.06] text-lg text-white/80 transition hover:bg-white/[0.12] disabled:opacity-30'
+    'flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.09] bg-white/[0.05] text-white/80 transition-colors hover:border-white/[0.18] hover:bg-white/[0.08] disabled:cursor-default disabled:opacity-30'
   return (
-    <div>
-      <p className="text-[15px] font-medium text-white/92">{label}</p>
-      <p className="mt-1 text-[11px] leading-4 text-white/38">{hint}</p>
-      <div className="mt-2 flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-3 py-2.5">
-        <button
-          type="button"
-          className={btn}
-          aria-label={`Diminuer ${label}`}
-          disabled={value <= min}
-          onClick={() => onChange(Math.max(min, value - 1))}
-        >
-          −
-        </button>
-        <p className="flex-1 text-center">
-          <span className="font-display text-2xl font-semibold tabular-nums text-white">{value}</span>
-          <span className="ml-1.5 text-[13px] text-white/38">{unit}</span>
-        </p>
-        <button
-          type="button"
-          className={btn}
-          aria-label={`Augmenter ${label}`}
-          disabled={value >= max}
-          onClick={() => onChange(Math.min(max, value + 1))}
-        >
-          +
-        </button>
-      </div>
+    <div className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-2">
+      <button
+        type="button"
+        className={btn}
+        aria-label={`Diminuer ${label}`}
+        disabled={value <= min}
+        onClick={() => onChange(Math.max(min, value - 1))}
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
+          <path strokeLinecap="round" d="M5 12h14" />
+        </svg>
+      </button>
+      <p className="flex flex-1 items-baseline justify-center gap-1.5" aria-live="polite">
+        <span className="stat-value">{value}</span>
+        <span className="stat-unit">{unit}</span>
+      </p>
+      <button
+        type="button"
+        className={btn}
+        aria-label={`Augmenter ${label}`}
+        disabled={value >= max}
+        onClick={() => onChange(Math.min(max, value + 1))}
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
+          <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
     </div>
   )
 }
 
-function SummaryLine({ label, value }: { label: string; value: string }) {
+/** Question de l’assistant : intitulé, aide, puis le contrôle. Pas de cadre autour. */
+function WizardField({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-1">
-      <span className="shrink-0 text-[13px] text-white/38">{label}</span>
-      <span className="min-w-0 flex-1 text-right text-[15px] font-medium text-white/92">{value}</span>
+    <div>
+      <p className="text-[14px] font-semibold text-white">{label}</p>
+      {hint ? <p className="mt-1 text-[13px] leading-[19px] text-white/45">{hint}</p> : null}
+      <div className="mt-3">{children}</div>
+    </div>
+  )
+}
+
+function RecapRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-t border-white/[0.06] py-2.5">
+      <dt className="shrink-0 text-[13px] text-white/45">{label}</dt>
+      <dd className="min-w-0 text-right text-[14px] font-medium text-white">{value}</dd>
     </div>
   )
 }
@@ -116,13 +164,19 @@ export function GoalsPanel() {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [step, setStep] = useState<Step>(1)
   const [distKm, setDistKm] = useState<number>(10)
+  const [terrain, setTerrain] = useState<GoalTerrain>('road')
   const [weeks, setWeeks] = useState(8)
+  const [durationMode, setDurationMode] = useState<DurationMode>('weeks')
+  /** Date de la course (AAAA-MM-JJ) quand la durée est dite en date. */
+  const [raceDate, setRaceDate] = useState('')
   const [sessions, setSessions] = useState(3)
   const [targetTime, setTargetTime] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
   const [feasibilityLoading, setFeasibilityLoading] = useState(false)
   const [feasibilityText, setFeasibilityText] = useState('')
+  /** Chiffres calculés par l’API : verdict, chrono visé, niveau actuel. */
+  const [feasibilityFacts, setFeasibilityFacts] = useState<FeasibilityFacts | null>(null)
   const [feasibilityErr, setFeasibilityErr] = useState('')
   const [goalChatInput, setGoalChatInput] = useState('')
   const [goalChatBusy, setGoalChatBusy] = useState(false)
@@ -299,20 +353,25 @@ export function GoalsPanel() {
     setFeasibilityLoading(true)
     setFeasibilityErr('')
     setFeasibilityText('')
+    setFeasibilityFacts(null)
 
     ;(async () => {
       try {
-        const { feasibility } = await previewGoalFeasibility(
+        const { feasibility, facts } = await previewGoalFeasibility(
           token,
           {
             distance_km: distKm,
+            terrain,
             weeks,
             sessions_per_week: sessions,
             target_time: tt,
           },
           { signal: ac.signal }
         )
-        if (!ac.signal.aborted) setFeasibilityText(feasibility)
+        if (!ac.signal.aborted) {
+          setFeasibilityText(feasibility)
+          setFeasibilityFacts(facts)
+        }
       } catch (e) {
         if (ac.signal.aborted) return
         setFeasibilityErr(e instanceof Error ? e.message : 'Impossible de charger l’avis')
@@ -322,17 +381,22 @@ export function GoalsPanel() {
     })()
 
     return () => ac.abort()
-  }, [wizardOpen, step, distKm, weeks, sessions, targetTime])
+  }, [wizardOpen, step, distKm, terrain, weeks, sessions, targetTime])
 
   function openWizard() {
     setErr('')
     setWizardOpen(true)
     setStep(1)
     setDistKm(10)
-    setWeeks(8)
+    setTerrain('road')
+    // La durée conseillée pour la distance pré-sélectionnée, comme au choix d’une distance.
+    setWeeks(DISTANCES.find((d) => d.km === 10)?.weeks ?? 10)
+    setDurationMode('weeks')
+    setRaceDate('')
     setSessions(3)
     setTargetTime('')
     setFeasibilityText('')
+    setFeasibilityFacts(null)
     setFeasibilityErr('')
     setFeasibilityLoading(false)
     const token = getToken()
@@ -354,6 +418,8 @@ export function GoalsPanel() {
         token,
         {
           distance_km: distKm,
+          terrain,
+          ...(durationMode === 'date' && raceDate ? { race_date: raceDate } : {}),
           weeks,
           sessions_per_week: sessions,
           target_time: targetTime.trim(),
@@ -372,256 +438,430 @@ export function GoalsPanel() {
     }
   }
 
+  /** Semaines déduites de la date, seulement si elles tiennent dans les bornes de l’API. */
+  function onRaceDateChange(v: string) {
+    setRaceDate(v)
+    const w = weeksUntil(v)
+    if (w != null && w >= WEEKS_MIN && w <= WEEKS_MAX) setWeeks(w)
+  }
+
   if (wizardOpen) {
     const dist = DISTANCES.find((d) => d.km === distKm)
+    const dateBounds = raceDateBounds()
+    const parsedWeeks = weeksUntil(raceDate)
+    const raceWeeks =
+      parsedWeeks != null && parsedWeeks >= WEEKS_MIN && parsedWeeks <= WEEKS_MAX
+        ? parsedWeeks
+        : null
+    const durationReady = durationMode === 'weeks' || raceWeeks != null
+    const settingsReady = targetTime.trim().length >= 2 && durationReady
+    const canGenerate = !feasibilityLoading && Boolean(feasibilityErr || feasibilityText)
+    const raceDay =
+      durationMode === 'date' && raceDate
+        ? new Date(`${raceDate}T00:00:00`).toLocaleDateString('fr-FR', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          })
+        : ''
+    const titles: Record<Step, string> = {
+      1: 'Quelle course prépares-tu ?',
+      2: 'Ton rythme de préparation',
+      3: 'Vérifie et lance ton plan',
+    }
+    const subtitles: Record<Step, string> = {
+      1: 'Le plan s’adapte au terrain et à la distance.',
+      2: 'Combien de temps, combien de séances, et quel chrono.',
+      3: 'Le coach donne son avis avant de construire tes semaines.',
+    }
+    const suggestions = [...(TARGET_SUGGESTIONS[distKm] ?? []), TARGET_FINISH]
+
     return (
-      <div className="mx-auto w-full max-w-lg space-y-5 px-safe py-6">
-        <div className="flex items-center gap-2">
+      <div className="mx-auto w-full max-w-[640px] px-safe py-5 sm:py-8">
+        <div className="flex items-center justify-between gap-3">
           <button
             type="button"
-            aria-label="Étape précédente"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white/60 transition hover:text-white disabled:opacity-30"
-            disabled={step === 1 || submitting}
-            onClick={() => setStep((st) => (st > 1 ? ((st - 1) as Step) : st))}
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />
-            </svg>
-          </button>
-          <div className="min-w-0 flex-1 text-center">
-            <p className="app-kicker text-brand-orange">Nouvel objectif</p>
-            <h2 className="mt-1 font-display text-[19px] font-semibold leading-6 tracking-[-0.3px] text-white/95">
-              {step === 1
-                ? 'Quelle distance vises-tu ?'
-                : step === 2
-                  ? `Réglages · ${dist?.label ?? `${distKm} km`}`
-                  : 'Validation'}
-            </h2>
-          </div>
-          <button
-            type="button"
-            aria-label="Fermer"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white/60 transition hover:text-white disabled:opacity-30"
             onClick={() => setWizardOpen(false)}
             disabled={submitting}
+            className="-ml-1 inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-lg px-1 text-[13px] font-medium text-white/50 transition-colors duration-150 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/60 disabled:opacity-40"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
               <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
             </svg>
+            Annuler
           </button>
+          <span className="text-[12px] tabular-nums text-white/40">Étape {step} sur 3</span>
         </div>
 
-        <WizardSteps current={step} />
+        <div className="mt-4">
+          <WizardSteps current={step} onSelect={submitting ? undefined : setStep} />
+        </div>
+
+        <div className="mt-10">
+          <p className="text-[11px] font-medium uppercase leading-none tracking-[0.14em] text-brand-orange">
+            Nouvel objectif
+          </p>
+          <h2 className="mt-3 font-display text-[1.75rem] font-bold leading-9 tracking-[-0.02em] text-white">
+            {titles[step]}
+          </h2>
+          <p className="mt-2 text-[14px] leading-[21px] text-white/50">{subtitles[step]}</p>
+        </div>
 
         {err ? (
-          <div className="rounded-2xl border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm text-red-100">{err}</div>
-        ) : null}
-
-        {step === 1 ? (
-          <div className="space-y-4">
-            <p className="text-[13px] leading-[19px] text-white/38">
-              La durée de préparation est pré-remplie selon la distance ; tu pourras l’ajuster à l’étape suivante.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              {DISTANCES.map((d) => {
-                const on = distKm === d.km
-                const accent = distanceAccent(d.km)
-                return (
-                  <button
-                    key={d.km}
-                    type="button"
-                    onClick={() => {
-                      setDistKm(d.km)
-                      setWeeks(d.weeks)
-                    }}
-                    className="rounded-2xl border-[1.5px] bg-white/[0.04] p-4 text-left transition"
-                    style={{
-                      borderColor: on ? accent : 'rgba(255,255,255,0.08)',
-                      backgroundColor: on ? `${accent}14` : undefined,
-                    }}
-                  >
-                    <span
-                      className="mb-2 block h-2 w-2 rounded-full"
-                      style={{ backgroundColor: accent }}
-                      aria-hidden
-                    />
-                    <span className="block font-display text-[17px] font-semibold text-white/95">{d.label}</span>
-                    <span className="mt-0.5 block text-[11px] text-white/38">{d.hint}</span>
-                    <span className="mt-2 block text-[11px] text-white/50">{d.weeks} semaines conseillées</span>
-                  </button>
-                )
-              })}
-            </div>
-            <button type="button" className="btn-brand w-full" onClick={() => setStep(2)}>
-              Continuer
-            </button>
+          <div
+            role="alert"
+            className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/[0.09] px-4 py-3 text-[13px] text-red-100"
+          >
+            {err}
           </div>
         ) : null}
 
-        {step === 2 ? (
-          <div className="space-y-5">
-            <Stepper
-              label="Durée de préparation"
-              hint="Nombre de semaines avant la course."
-              value={weeks}
-              unit={weeks > 1 ? 'semaines' : 'semaine'}
-              min={WEEKS_MIN}
-              max={WEEKS_MAX}
-              onChange={setWeeks}
-            />
-            <Stepper
-              label="Séances par semaine"
-              hint="Moyenne visée, le plan s’y adapte."
-              value={sessions}
-              unit={sessions > 1 ? 'séances' : 'séance'}
-              min={SESSIONS_MIN}
-              max={SESSIONS_MAX}
-              onChange={setSessions}
-            />
-            <div>
-              <p className="text-[15px] font-medium text-white/92">Chrono visé</p>
-              <p className="mt-1 text-[11px] leading-[16px] text-white/38">
-                Ex. « 48 min », « 1h40 », « moins de 4h ». Tu peux aussi indiquer « finir sans chrono précis ».
-              </p>
-              <input
-                type="text"
-                className="field mt-2"
-                placeholder="Ex. 50 min, 1h30…"
-                value={targetTime}
-                onChange={(e) => setTargetTime(e.target.value)}
-                maxLength={120}
-                autoComplete="off"
-              />
-            </div>
-            <button
-              type="button"
-              className="btn-brand w-full"
-              onClick={() => setStep(3)}
-              disabled={targetTime.trim().length < 2}
-            >
-              Voir l’avis du coach
-            </button>
-          </div>
-        ) : null}
-
-        {step === 3 ? (
-          <div className="space-y-4">
-            <div className="rounded-[20px] border border-white/[0.08] bg-[#0d0f16] p-4">
-              <SummaryLine label="Course" value={dist?.label ?? `${distKm} km`} />
-              <SummaryLine label="Chrono visé" value={targetTime.trim()} />
-              <SummaryLine label="Délai" value={`${weeks} semaine${weeks > 1 ? 's' : ''}`} />
-              <SummaryLine
-                label="Rythme"
-                value={`${sessions} séance${sessions > 1 ? 's' : ''} / semaine`}
-              />
-              <button
-                type="button"
-                className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-brand-orange/90 transition hover:text-brand-orange"
-                onClick={() => setStep(2)}
-              >
-                Modifier les réglages
-              </button>
-            </div>
-
-            <div className="relative overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#0d0f16] p-5 pl-7">
-              <span className="absolute inset-y-0 left-0 w-1 bg-brand-ice/85" aria-hidden />
-              <p className="app-kicker text-brand-ice">
-                {stravaLinked ? 'Avis faisabilité · Strava + objectif' : 'Avis faisabilité · objectif'}
-              </p>
-              {feasibilityLoading ? (
-                <p className="mt-3 text-sm text-white/45">Analyse en cours…</p>
-              ) : null}
-              {feasibilityErr ? <p className="mt-3 text-sm text-red-200/90">{feasibilityErr}</p> : null}
-              {!feasibilityLoading && feasibilityText ? (
-                <SimplePlanBody text={feasibilityText} className="mt-3" />
-              ) : null}
-              {stravaLinked === false ? (
-                <p className="mt-3 text-[11px] leading-4 text-white/30">
-                  Sans Strava, l’avis se base sur ton objectif seul ; il s’affinera après liaison.
-                </p>
-              ) : null}
-            </div>
-
-            <p className="text-[11px] leading-4 text-white/30">
-              La génération du plan détaillé (semaine par semaine) complète cet avis. Compte jusqu’à une minute.
-            </p>
-            {submitting ? (
-              <div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3.5">
-                <ProgressRing
-                  done={createProgress?.done ?? 0}
-                  total={createProgress?.total ?? 1}
-                  label="Génération du plan"
-                  color="#fc4c02"
-                />
-                <div className="min-w-0">
-                  <p className="text-[14px] font-medium text-white/92">Génération du plan…</p>
-                  <p className="mt-0.5 text-[12px] text-white/45">
-                    {createProgress?.label || 'Le coach prépare ta préparation.'}
-                  </p>
+        <div className="mt-8 space-y-8">
+          {step === 1 ? (
+            <>
+              <WizardField label="Type de course" hint={TERRAINS.find((t) => t.id === terrain)?.hint}>
+                <div className="app-segment !max-w-none" role="group" aria-label="Type de course">
+                  {TERRAINS.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      aria-pressed={terrain === t.id}
+                      className={`app-segment-item cursor-pointer ${terrain === t.id ? 'app-segment-item--on' : ''}`}
+                      onClick={() => setTerrain(t.id)}
+                    >
+                      {TERRAIN_LABELS[t.id]}
+                    </button>
+                  ))}
                 </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="btn-brand w-full"
-                onClick={() => void submitWizard()}
-                disabled={
-                  feasibilityLoading ||
-                  (!feasibilityErr && !feasibilityText && !feasibilityLoading)
+              </WizardField>
+
+              <WizardField label="Distance">
+                <div className="space-y-2" role="radiogroup" aria-label="Distance">
+                  {DISTANCES.map((d) => {
+                    const on = distKm === d.km
+                    return (
+                      <button
+                        key={d.km}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() => {
+                          setDistKm(d.km)
+                          // En mode date, c’est l’échéance qui fixe les semaines : la valeur
+                          // conseillée pour la distance n’a pas à l’écraser.
+                          if (durationMode === 'weeks') setWeeks(d.weeks)
+                        }}
+                        className={`flex w-full cursor-pointer items-center gap-4 rounded-2xl border px-4 py-3.5 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/50 sm:px-5 ${
+                          on
+                            ? 'border-brand-orange/60 bg-brand-orange/[0.08]'
+                            : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.16] hover:bg-white/[0.04]'
+                        }`}
+                      >
+                        <span className="w-[112px] shrink-0 font-display text-[20px] font-bold tracking-[-0.02em] text-white sm:w-[124px] sm:text-[22px]">
+                          {d.label}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[14px] text-white/85">{d.hint}</span>
+                          <span className="block text-[12px] text-white/40">{d.weeks} semaines conseillées</span>
+                        </span>
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                            on ? 'border-brand-orange' : 'border-white/25'
+                          }`}
+                          aria-hidden
+                        >
+                          {on ? <span className="h-2.5 w-2.5 rounded-full bg-brand-orange" /> : null}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </WizardField>
+            </>
+          ) : null}
+
+          {step === 2 ? (
+            <>
+              <WizardField
+                label="Durée de préparation"
+                hint={
+                  durationMode === 'weeks'
+                    ? `Pour un ${dist?.label ?? `${distKm} km`}, ${dist?.weeks ?? weeks} semaines sont conseillées.`
+                    : 'La durée se déduit du jour de ta course.'
                 }
               >
-                Générer le plan
-              </button>
-            )}
-          </div>
-        ) : null}
+                <div className="app-segment !max-w-none" role="group" aria-label="Façon d’indiquer la durée">
+                  {DURATION_MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-pressed={durationMode === m.id}
+                      className={`app-segment-item cursor-pointer ${durationMode === m.id ? 'app-segment-item--on' : ''}`}
+                      onClick={() => setDurationMode(m.id)}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3">
+                  {durationMode === 'weeks' ? (
+                    <StepperControl
+                      label="Durée de préparation"
+                      value={weeks}
+                      unit={weeks > 1 ? 'semaines' : 'semaine'}
+                      min={WEEKS_MIN}
+                      max={WEEKS_MAX}
+                      onChange={setWeeks}
+                    />
+                  ) : (
+                    <>
+                      <label htmlFor="goal-race-date" className="sr-only">
+                        Date de la course
+                      </label>
+                      <RaceDatePicker
+                        id="goal-race-date"
+                        value={raceDate}
+                        min={dateBounds.min}
+                        max={dateBounds.max}
+                        onChange={onRaceDateChange}
+                      />
+                      <p
+                        className={`mt-2 text-[12px] leading-4 ${
+                          raceDate && raceWeeks == null ? 'text-red-200/90' : 'text-white/40'
+                        }`}
+                      >
+                        {raceWeeks != null
+                          ? `Soit ${raceWeeks} semaine${raceWeeks > 1 ? 's' : ''} de préparation.`
+                          : raceDate
+                            ? `Choisis une date entre ${WEEKS_MIN} et ${WEEKS_MAX} semaines d’ici.`
+                            : 'Le jour de ta course — le plan s’arrête dessus.'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </WizardField>
+
+              <WizardField label="Séances par semaine" hint="Moyenne visée : le plan s’y adapte.">
+                <div className="grid grid-cols-7 gap-2" role="radiogroup" aria-label="Séances par semaine">
+                  {Array.from({ length: SESSIONS_MAX - SESSIONS_MIN + 1 }, (_, i) => i + SESSIONS_MIN).map((n) => {
+                    const on = sessions === n
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        aria-label={`${n} séance${n > 1 ? 's' : ''} par semaine`}
+                        onClick={() => setSessions(n)}
+                        className={`h-12 cursor-pointer rounded-xl border font-display text-[17px] font-semibold tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/50 ${
+                          on
+                            ? 'border-brand-orange/60 bg-brand-orange/[0.12] text-white'
+                            : 'border-white/[0.08] bg-white/[0.02] text-white/60 hover:border-white/[0.16] hover:text-white'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    )
+                  })}
+                </div>
+              </WizardField>
+
+              <WizardField label="Chrono visé" hint="Un temps, une fourchette ou simplement finir.">
+                <label htmlFor="goal-target" className="sr-only">
+                  Chrono visé
+                </label>
+                <input
+                  id="goal-target"
+                  type="text"
+                  className="field"
+                  placeholder={`Ex. ${suggestions[1] ?? '50 min'}`}
+                  value={targetTime}
+                  onChange={(e) => setTargetTime(e.target.value)}
+                  maxLength={120}
+                  autoComplete="off"
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setTargetTime(s)}
+                      aria-pressed={targetTime.trim() === s}
+                      className={`chart-chip cursor-pointer ${
+                        targetTime.trim() === s ? '!border-brand-orange/50 !bg-brand-orange/[0.12] !text-white' : ''
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </WizardField>
+            </>
+          ) : null}
+
+          {step === 3 ? (
+            <>
+              <section className="chart-card p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="stat-label">Ton objectif</p>
+                    <p className="mt-2 font-display text-[24px] font-bold leading-8 tracking-[-0.02em] text-white">
+                      {dist?.label ?? `${distKm} km`}
+                      <span className="ml-2 text-[15px] font-semibold text-white/42">
+                        {targetTime.trim() === TARGET_FINISH ? 'à finir' : `en ${formatTarget(targetTime)}`}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 text-[13px] text-white/45">{TERRAIN_LABELS[terrain]}</p>
+                  </div>
+                  <button type="button" onClick={() => setStep(2)} className="chart-chip shrink-0 cursor-pointer">
+                    Modifier
+                  </button>
+                </div>
+                <dl className="mt-4">
+                  <RecapRow label="Préparation" value={`${weeks} semaine${weeks > 1 ? 's' : ''}`} />
+                  {raceDay ? <RecapRow label="Course le" value={raceDay} /> : null}
+                  <RecapRow label="Séances" value={`${sessions} par semaine`} />
+                </dl>
+              </section>
+
+              <FeasibilityReview
+                text={feasibilityText}
+                facts={feasibilityFacts}
+                loading={feasibilityLoading}
+                error={feasibilityErr}
+                stravaLinked={stravaLinked}
+              />
+            </>
+          ) : null}
+        </div>
+
+        <div className="mt-10 border-t border-white/[0.06] pt-6">
+          {submitting ? (
+            <div className="flex items-center gap-4" role="status">
+              <ProgressRing
+                done={createProgress?.done ?? 0}
+                total={createProgress?.total ?? 1}
+                label="Génération du plan"
+                color="#fc4c02"
+              />
+              <div className="min-w-0">
+                <p className="text-[14px] font-semibold text-white">Génération de ton plan…</p>
+                <p className="mt-0.5 text-[12px] text-white/45">
+                  {createProgress?.label || 'Le coach prépare tes semaines, compte une minute environ.'}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              {step > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setStep((step - 1) as Step)}
+                  className="inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 rounded-lg px-2 text-[14px] font-medium text-white/60 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/60"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />
+                  </svg>
+                  Retour
+                </button>
+              ) : (
+                <span />
+              )}
+              {step < 3 ? (
+                <button
+                  type="button"
+                  className="btn-brand min-w-[160px] cursor-pointer px-6"
+                  onClick={() => setStep((step + 1) as Step)}
+                  disabled={step === 2 && !settingsReady}
+                >
+                  {step === 1 ? 'Continuer' : 'Voir l’avis du coach'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-brand min-w-[160px] cursor-pointer px-6"
+                  onClick={() => void submitWizard()}
+                  disabled={!canGenerate}
+                >
+                  Générer mon plan
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     )
   }
 
-  const timelines = goals.map((g) => goalTimeline(g))
-  const activeCount = timelines.filter((t) => !t.finished).length
-  const doneCount = timelines.length - activeCount
-  const nextDays = timelines
-    .filter((t) => !t.finished && t.daysLeft != null)
-    .reduce<number | null>((min, t) => (min == null || t.daysLeft! < min ? t.daysLeft! : min), null)
-
+  const withTimeline = goals.map((g) => ({ goal: g, t: goalTimeline(g) }))
+  const active = withTimeline
+    .filter(({ t }) => !t.finished)
+    .sort((a, b) => (a.t.daysLeft ?? Infinity) - (b.t.daysLeft ?? Infinity))
+  const finished = withTimeline.filter(({ t }) => t.finished)
   const hasDetail = detail != null
 
-  const listAside = (
-    <aside
-      className={`w-full shrink-0 space-y-3 lg:sticky lg:top-4 lg:self-start ${
-        hasDetail ? 'hidden lg:block lg:w-[300px] xl:w-[330px]' : 'lg:w-[420px]'
-      }`}
-    >
-      <CreateGoalCta onClick={openWizard} />
-
-      {goals.length > 0 ? (
-        <GoalSummaryStrip active={activeCount} done={doneCount} nextDays={nextDays} />
-      ) : null}
-
+  /*
+   * Deux pages distinctes : la liste, puis l’objectif ouvert, seul à l’écran — ce
+   * qu’on lit alors, c’est le plan, et le retour à la liste se fait par le fil
+   * d’Ariane de l’en-tête.
+   */
+  const list = hasDetail ? null : (
+    <section className="mx-auto w-full max-w-6xl space-y-6">
+      <PageHeading
+        kicker="Tes objectifs"
+        title={
+          active.length > 0
+            ? `${active.length} course${active.length > 1 ? 's' : ''} en préparation`
+            : 'Prépare ta prochaine course'
+        }
+        action={goals.length > 0 ? <CreateGoalCta onClick={openWizard} /> : null}
+      />
       {loadingList ? (
-        <div className="app-skeleton h-[120px]" />
-      ) : goals.length === 0 ? (
-        <GoalsEmptyState />
-      ) : (
-        <div className="space-y-3 lg:max-h-[calc(100dvh-19rem)] lg:overflow-y-auto lg:pr-1">
-          {goals.map((g) => (
-            <GoalCard
-              key={g.id}
-              goal={g}
-              selected={selectedId === g.id}
-              onOpen={() => setSelectedId(g.id)}
-            />
-          ))}
+        <div className="space-y-6" aria-busy="true">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div className="app-skeleton h-[118px]" />
+            <div className="app-skeleton h-[118px]" />
+            <div className="app-skeleton h-[118px]" />
+            <div className="app-skeleton h-[118px]" />
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="app-skeleton h-[230px]" />
+            <div className="app-skeleton h-[230px]" />
+          </div>
         </div>
+      ) : goals.length === 0 ? (
+        <GoalsEmptyState onCreate={openWizard} />
+      ) : (
+        <>
+          <GoalsSummary active={active.map(({ goal }) => goal)} finished={finished.length} />
+          {active.length > 0 ? (
+            <>
+              <SectionTitle hint="La course la plus proche en premier">En cours</SectionTitle>
+              <div className="grid gap-3 md:grid-cols-2">
+                {active.map(({ goal }) => (
+                  <GoalCard key={goal.id} goal={goal} onOpen={() => setSelectedId(goal.id)} />
+                ))}
+              </div>
+            </>
+          ) : null}
+          {finished.length > 0 ? (
+            <>
+              <SectionTitle>Terminés</SectionTitle>
+              <div className="grid gap-3 opacity-75 md:grid-cols-2">
+                {finished.map(({ goal }) => (
+                  <GoalCard key={goal.id} goal={goal} onOpen={() => setSelectedId(goal.id)} />
+                ))}
+              </div>
+            </>
+          ) : null}
+        </>
       )}
-    </aside>
+    </section>
   )
 
   const stravaNotice = detail?.plan_without_strava_data ? (
     stravaLinked ? (
-      <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.08] p-4 text-[13px] leading-relaxed text-emerald-100/95">
+      <div className="rounded-lg border border-white/[0.08] p-4 text-[13px] leading-relaxed text-white/70">
         <p className="max-w-[70ch]">
           Strava est associé, mais ce plan a été écrit{' '}
           <span className="font-medium text-white">avant</span> : ses repères ne tiennent pas compte
@@ -636,7 +876,7 @@ export function GoalsPanel() {
             />
             <div className="min-w-0">
               <p className="font-medium text-white">Chargement…</p>
-              <p className="mt-0.5 text-emerald-100/70">
+              <p className="mt-0.5 text-white/50">
                 {replanProgress?.label || 'Le coach relit tes sorties.'}
               </p>
             </div>
@@ -644,7 +884,7 @@ export function GoalsPanel() {
         ) : (
           <button
             type="button"
-            className="btn-quiet mt-3 min-h-[44px] border-emerald-400/30 text-[13px] text-emerald-50 hover:border-emerald-400/50 hover:bg-emerald-400/10"
+            className="mt-3 inline-flex h-9 cursor-pointer items-center rounded-lg border border-white/[0.12] px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-white/[0.05]"
             onClick={() => void onReplanWithStrava()}
           >
             Recalculer avec mes sorties Strava
@@ -653,62 +893,52 @@ export function GoalsPanel() {
         {goalReplanErr ? <p className="mt-2 text-red-200/90">{goalReplanErr}</p> : null}
       </div>
     ) : (
-      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4 text-[13px] leading-relaxed text-white/70">
-        Ce plan s’appuie sur ton objectif (sans historique Strava).{' '}
+      <p className="text-[13px] leading-relaxed text-white/45">
+        Ce plan s’appuie sur ton objectif seul.{' '}
         <Link
           href="/link-strava/"
-          className="font-medium text-brand-ice/90 underline decoration-white/15 underline-offset-2 hover:text-white"
+          className="font-medium text-white/80 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white hover:decoration-white/60"
         >
-          Associer Strava
+          Associe Strava
         </Link>{' '}
-        permet d’aligner conseils et calendrier sur tes sorties réelles.
-      </div>
+        pour caler conseils et calendrier sur tes sorties réelles.
+      </p>
     )
   ) : null
 
   const programPanel = detail ? (
-    <div
-      role="tabpanel"
-      id="goal-panel-program"
-      aria-labelledby="goal-tab-program"
-      className="panel p-4 sm:p-5"
-    >
+    <div role="tabpanel" id="goal-panel-program" aria-labelledby="goal-tab-program">
       <GoalProgram goal={detail} />
     </div>
   ) : null
 
   const guidancePanel = detail ? (
-    <div
-      role="tabpanel"
-      id="goal-panel-guidance"
-      aria-labelledby="goal-tab-guidance"
-      className="panel p-4 sm:p-5"
-    >
+    <div role="tabpanel" id="goal-panel-guidance" aria-labelledby="goal-tab-guidance">
       <GoalGuidance plan={detail.plan} />
     </div>
   ) : null
+
+  // Ce qui change le calendrier : l’onglet le relit alors.
+  const planStamp = detail
+    ? JSON.stringify([
+        detail.sessions_per_week,
+        detail.weeks,
+        detail.planned_sessions?.length ?? 0,
+        detail.plan?.length ?? 0,
+        detail.calendar_day_offsets ?? null,
+        detail.session_overrides ?? null,
+        detail.unavailabilities ?? null,
+      ])
+    : ''
 
   const calendarPanel = detail && authToken ? (
     <div
       role="tabpanel"
       id="goal-panel-calendar"
       aria-labelledby="goal-tab-calendar"
-      className="panel p-4 sm:p-5"
+      className="chart-card p-4 sm:p-5"
     >
-      <GoalTrainingCalendar
-        goalId={detail.id}
-        token={authToken}
-        plan={detail.plan}
-        planStamp={JSON.stringify([
-          detail.sessions_per_week,
-          detail.weeks,
-          detail.planned_sessions?.length ?? 0,
-          detail.plan?.length ?? 0,
-          detail.calendar_day_offsets ?? null,
-          detail.session_overrides ?? null,
-          detail.unavailabilities ?? null,
-        ])}
-      />
+      <GoalTrainingCalendar goalId={detail.id} token={authToken} plan={detail.plan} planStamp={planStamp} />
     </div>
   ) : null
 
@@ -720,7 +950,7 @@ export function GoalsPanel() {
       role="tabpanel"
       id="goal-panel-coach"
       aria-labelledby="goal-tab-coach"
-      className="panel flex h-[calc(100dvh-12rem)] max-h-[46rem] min-h-[24rem] flex-col p-4 sm:p-6 lg:h-[calc(100dvh-18rem)]"
+      className="flex h-[calc(100dvh-12rem)] max-h-[46rem] min-h-[24rem] flex-col chart-card p-4 sm:p-6"
     >
       <div className="shrink-0">
         <h3 className="font-display text-[15px] font-semibold text-white">Discussion avec le coach</h3>
@@ -787,7 +1017,7 @@ export function GoalsPanel() {
       {/* Collé au bas de la zone visible : le champ reste atteignable même quand le
           panneau déborde de l'écran, sans avoir à faire défiler la page. */}
       <form
-        className="sticky bottom-0 -mx-4 mt-4 flex shrink-0 flex-col gap-2 border-t border-white/[0.06] bg-[rgba(18,21,31,0.96)] px-4 pb-2 pt-4 backdrop-blur-xl sm:-mx-6 sm:flex-row sm:px-6"
+        className="sticky bottom-0 -mx-4 mt-4 flex shrink-0 flex-col gap-2 border-t border-white/[0.06] bg-[#0d0f16] px-4 pb-2 pt-4 backdrop-blur-xl sm:-mx-6 sm:flex-row sm:px-6"
         onSubmit={onGoalChatSubmit}
       >
         <label htmlFor="goal-coach-input" className="sr-only">
@@ -814,36 +1044,24 @@ export function GoalsPanel() {
   ) : null
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 px-safe py-5 sm:gap-6 sm:py-6 lg:flex-row lg:items-start">
-      {listAside}
+    <div className="mx-auto w-full max-w-[1400px] px-safe py-5 sm:py-6">
+      {list}
 
-      <main className="min-w-0 flex-1">
-        {!detail ? (
-          goals.length > 0 ? (
-            <div className="app-empty hidden lg:flex">
-              <p className="text-base font-semibold text-white/92">Aucun objectif sélectionné</p>
-              <p className="mx-auto mt-1.5 max-w-[320px] text-[13px] leading-[19px] text-white/38">
-                Choisis un objectif dans la liste pour voir son plan, son calendrier et la discussion
-                avec le coach.
-              </p>
-            </div>
-          ) : null
-        ) : (
-          <div className="space-y-4 sm:space-y-5">
-            <GoalDetailHeader
-              goal={detail}
-              onBack={() => setSelectedId(null)}
-              onDelete={() => void onDeleteGoal()}
-              deleting={goalDeleteBusy}
-            />
-            {goalDeleteErr ? (
-              <p className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] text-red-100">
-                {goalDeleteErr}
-              </p>
-            ) : null}
+      {detail ? (
+        <main className="mx-auto min-w-0 max-w-6xl">
+          <GoalDetailHeader
+            goal={detail}
+            onBack={() => setSelectedId(null)}
+            onDelete={() => void onDeleteGoal()}
+            deleting={goalDeleteBusy}
+          />
+          {goalDeleteErr ? (
+            <p className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/[0.09] px-4 py-3 text-[13px] text-red-100">{goalDeleteErr}</p>
+          ) : null}
 
-            {stravaNotice}
+          {stravaNotice ? <div className="mt-6">{stravaNotice}</div> : null}
 
+          <div className="mt-8 space-y-6">
             <GoalTabs active={tab} onChange={setTab} />
 
             {tab === 'program'
@@ -854,8 +1072,8 @@ export function GoalsPanel() {
                   ? calendarPanel
                   : coachPanel}
           </div>
-        )}
-      </main>
+        </main>
+      ) : null}
     </div>
   )
 }

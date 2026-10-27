@@ -892,9 +892,10 @@ export function RunDetailPanel({ run, source, birthDate }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={`rounded-full border px-2.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] ${
+              /* Même teinte de provenance que la liste et l'app : orange Strava, glace NeuroRun. */
               isStrava
-                ? "border-brand-ice/35 bg-brand-ice/15 text-brand-ice"
-                : "border-brand-orange/35 bg-brand-orange/[0.08] text-brand-orange"
+                ? "border-brand-orange/35 bg-brand-orange/[0.12] text-brand-orange"
+                : "border-brand-ice/35 bg-brand-ice/[0.12] text-brand-ice"
             }`}
           >
             {isStrava ? "Strava" : "NeuroRun"}

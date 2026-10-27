@@ -42,8 +42,9 @@ export function SimplePlanBody({ text, className = '' }: { text: string; classNa
             </h4>
           )
         }
-        if (/^[-*]\s+/.test(t)) {
-          const c = t.replace(/^[-*]\s+/, '')
+        // Puces et listes numérotées se reconnaissent aussi en retrait (sous-liste).
+        if (/^\s*[-*]\s+/.test(t)) {
+          const c = t.replace(/^\s*[-*]\s+/, '')
           return (
             <div key={i} className="ml-0.5 flex gap-2.5 py-0.5">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-orange/85" aria-hidden />
@@ -53,7 +54,7 @@ export function SimplePlanBody({ text, className = '' }: { text: string; classNa
             </div>
           )
         }
-        const ordered = /^(\d{1,2})[.)]\s+/.exec(t)
+        const ordered = /^\s*(\d{1,2})[.)]\s+/.exec(t)
         if (ordered) {
           const c = t.slice(ordered[0].length)
           return (

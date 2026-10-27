@@ -1313,10 +1313,20 @@ export type GoalUnavailability = {
   reason?: string;
 };
 
+/**
+ * Terrain de la course visée : la préparation d’un trail ne se chiffre pas comme
+ * celle d’une route (dénivelé, marche en montée, allures moins parlantes).
+ * Les objectifs créés avant ce champ sont lus comme des courses sur route.
+ */
+export type GoalTerrain = "road" | "trail";
+
 export type Goal = {
   id: string;
   distance_km: number;
   distance_label: string;
+  terrain: GoalTerrain;
+  /** Jour de la course (AAAA-MM-JJ) si la personne l’a indiqué ; sinon l’échéance se déduit de `weeks`. */
+  race_date?: string;
   weeks: number;
   sessions_per_week: number;
   target_time: string;
@@ -1382,6 +1392,8 @@ function normalizeUnavailabilities(
 function normalizeGoal(g: Goal): Goal {
   return {
     ...g,
+    terrain: g.terrain === "trail" ? "trail" : "road",
+    race_date: g.race_date == null ? "" : String(g.race_date),
     target_time: g.target_time == null ? "" : String(g.target_time),
     plan: g.plan == null ? "" : String(g.plan),
     plan_without_strava_data: Boolean(g.plan_without_strava_data),
@@ -1399,24 +1411,48 @@ export async function listGoals(token: string) {
 
 export type GoalDraftPayload = {
   distance_km: number;
+  terrain: GoalTerrain;
+  /** Jour de la course quand c’est lui qui fixe le délai ; omis sinon. */
+  race_date?: string;
   weeks: number;
   sessions_per_week: number;
   target_time: string;
 };
 
 /** Avis faisabilité (avant génération du plan complet). */
+/** Chiffres calculés par l'API avant l'avis du coach ; 0 = inconnu. */
+export type FeasibilityFacts = {
+  /** Vide quand le verdict est laissé au coach (trail, pas assez de données). */
+  verdict: string;
+  goal_km: number;
+  target_sec: number;
+  target_pace_sec_per_km: number;
+  predicted_sec: number;
+  predicted_pace_sec_per_km: number;
+  /** Positif : le chrono visé est plus rapide que le niveau actuel. */
+  gap_pct: number;
+  allowed_pct: number;
+  reference_run?: { name: string; date: string; distance_km: number; time_sec: number } | null;
+  longest_run_km: number;
+  runs_analyzed: number;
+  trail: boolean;
+};
+
 export async function previewGoalFeasibility(
   token: string,
   body: GoalDraftPayload,
   opts?: { signal?: AbortSignal },
 ) {
-  const d = await api<{ feasibility: string }>("/api/goals/feasibility", {
+  const d = await api<{ feasibility: string; facts?: FeasibilityFacts | null }>("/api/goals/feasibility", {
     method: "POST",
     token,
     body: JSON.stringify(body),
     signal: opts?.signal,
   });
-  return { feasibility: d.feasibility == null ? "" : String(d.feasibility) };
+  return {
+    feasibility: d.feasibility == null ? "" : String(d.feasibility),
+    facts: d.facts ?? null,
+  };
 }
 
 export async function createGoal(token: string, body: GoalDraftPayload) {
@@ -1821,7 +1857,14 @@ export type RunHistoryFeedItem = {
   avg_heartrate?: number;
   /** Séance à intervalles : `avg_pace_sec_per_km` inclut les récupérations. */
   is_interval?: boolean;
+  /** Silhouette du tracé (polyline Google, simplifiée), absente sans GPS. */
+  route_polyline?: string;
+  /** Course NeuroRun : type choisi au départ. */
+  session_type?: RunKind;
 };
+
+/** Nature d’une course NeuroRun, choisie avant le départ. */
+export type RunKind = "free" | "endurance" | "interval";
 
 /**
  * Historique fusionné courses NeuroRun + sorties Strava, trié par date décroissante
@@ -1861,4 +1904,281 @@ export async function getStravaActivityDetail(
     `/api/strava/activities/${encodeURIComponent(String(stravaActivityId))}`,
     { token },
   );
+}
+
+/* ---------- Note d’une course (même barème que l’app mobile) ---------- */
+
+export type RunScoreKm = {
+  km: number;
+  pace_sec_per_km: number;
+  /**
+   * Écart signé à l’allure visée (négatif = plus rapide). Hors course à fond,
+   * écart à la zone de la séance : 0 tant que le km y reste.
+   */
+  delta_sec: number;
+  points: number;
+  in_zone?: boolean;
+  /** FC moyenne sur ce kilomètre, absente sans montre. */
+  hr_bpm?: number;
+};
+
+export type RunScoreBand =
+  | "exceptionnel"
+  | "tres_bon"
+  | "bon"
+  | "correct"
+  | "a_travailler";
+
+/** Type de séance jugé : la note juge la course sur ce qu’elle cherchait à faire. */
+export type RunSessionType = "endurance" | "tempo" | "race" | "interval";
+
+/** Répétition d’un fractionné dans la note. */
+export type RunScoreRep = {
+  rep: number;
+  distance_m: number;
+  sec: number;
+  pace_sec_per_km: number;
+  /** Écart à l’allure médiane des répétitions (négatif = plus vite). */
+  delta_sec: number;
+  points: number;
+  /** Récupération qui suit, absente après la dernière. */
+  recovery_sec?: number;
+  hr_bpm?: number;
+};
+
+/** Composante de la note (régularité, zone cardio…) et son poids en %. */
+export type RunScoreComponent = {
+  key: string;
+  label: string;
+  score: number;
+  weight: number;
+};
+
+export type RunScoreExplanation = {
+  summary: string;
+  why: string[];
+  advice: string[];
+  ai_used: boolean;
+};
+
+export type RunScore = {
+  total: number;
+  regularity: number;
+  chrono: number;
+  band: RunScoreBand;
+  /** Absents d’une note calculée par un serveur antérieur au barème v2. */
+  session_type?: RunSessionType;
+  /** Type déduit de l’allure (course libre) ; sinon choisi au départ. */
+  session_auto?: boolean;
+  /** Fractionné choisi au départ, mais répétitions introuvables dans la trace. */
+  intervals_undetected?: boolean;
+  /** Répétitions d’un fractionné. */
+  reps?: RunScoreRep[];
+  components?: RunScoreComponent[];
+  vma_kmh: number;
+  distance_km: number;
+  /** Allure moyenne en % de la VMA. */
+  intensity_pct?: number;
+  /** Allure de course prédite : l’objectif d’une course à fond, un repère sinon. */
+  target_pace_sec_per_km: number;
+  target_time_sec: number;
+  actual_time_sec: number;
+  chrono_delta_sec: number;
+  /** Zone d’allure de la séance (hors course à fond). */
+  zone_fast_pace_sec_per_km?: number;
+  zone_slow_pace_sec_per_km?: number;
+  kms: RunScoreKm[];
+  kms_in_band: number;
+  best_km: number;
+  worst_km: number;
+  spread_sec: number;
+  mean_abs_dev_sec: number;
+  drift_sec: number;
+  /** Course nettement plus rapide que prévu : la VMA de référence a vieilli. */
+  stale_vma_hint: boolean;
+  hr_avg_bpm?: number;
+  hr_max_bpm?: number;
+  /** Plafond cardio de la séance (hors course à fond). */
+  hr_ceiling_bpm?: number;
+  /** Part du temps passée sous le plafond cardio, en %. */
+  hr_in_zone_pct?: number;
+  /** Dérive cardiaque entre les deux moitiés, en %. */
+  decoupling_pct?: number;
+  explanation?: RunScoreExplanation;
+};
+
+export type RunScoreResponse =
+  | { scored: true; score: RunScore }
+  | { scored: false; needs_vma_test: boolean; reason: string };
+
+/** Note sur 100 d’une course NeuroRun (les sorties Strava ne sont pas notées). */
+export async function fetchRunScore(
+  token: string,
+  runId: string,
+): Promise<RunScoreResponse> {
+  return api<RunScoreResponse>(
+    `/api/live-runs/${encodeURIComponent(runId)}/score`,
+    { token },
+  );
+}
+
+/* ---------- Boost : amis, fil et réactions (mêmes routes que l’app) ---------- */
+
+export type BoostKind = "boost" | "fire" | "respect";
+
+export type FriendUser = {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  /** Prénom seul en général — c’est ce qu’affiche le fil. */
+  display_name: string;
+};
+
+/** Où en est la relation avec un compte trouvé dans la recherche. */
+export type FriendRelation = "none" | "friend" | "request_sent" | "request_received";
+
+export type UserSearchResult = FriendUser & {
+  relation: FriendRelation;
+  /** Présent seulement pour `request_received` : permet d’accepter depuis la recherche. */
+  request_id?: string;
+};
+
+export type FriendRequest = {
+  id: string;
+  created_at: string;
+  user: FriendUser;
+};
+
+export type BoostCounts = Record<BoostKind, number>;
+
+export type BoostFeedItem = {
+  id: string;
+  user: FriendUser;
+  created_at: string;
+  distance_m: number;
+  moving_sec: number;
+  wall_sec: number;
+  avg_pace_sec_per_km: number;
+  split_count: number;
+  elevation_gain_m: number;
+  boosts: BoostCounts;
+  /** Réaction déjà posée par le compte courant, si elle existe. */
+  my_boost: BoostKind | null;
+};
+
+export async function searchUsers(token: string, q: string): Promise<UserSearchResult[]> {
+  const d = await api<{ users?: UserSearchResult[] }>(
+    `/api/users/search?q=${encodeURIComponent(q)}`,
+    { token },
+  );
+  return asArray(d.users);
+}
+
+export async function fetchFriends(token: string): Promise<FriendUser[]> {
+  const d = await api<{ friends?: FriendUser[] }>("/api/friends", { token });
+  return asArray(d.friends);
+}
+
+export async function removeFriend(token: string, userId: string): Promise<void> {
+  await api(`/api/friends/${encodeURIComponent(userId)}`, { method: "DELETE", token });
+}
+
+export async function sendFriendRequest(token: string, userId: string): Promise<void> {
+  await api("/api/friends/requests", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function fetchFriendRequests(
+  token: string,
+): Promise<{ incoming: FriendRequest[]; outgoing: FriendRequest[] }> {
+  const d = await api<{ incoming?: FriendRequest[]; outgoing?: FriendRequest[] }>(
+    "/api/friends/requests",
+    { token },
+  );
+  return { incoming: asArray(d.incoming), outgoing: asArray(d.outgoing) };
+}
+
+export async function respondFriendRequest(
+  token: string,
+  requestId: string,
+  accept: boolean,
+): Promise<void> {
+  await api(`/api/friends/requests/${encodeURIComponent(requestId)}/respond`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ accept }),
+  });
+}
+
+export async function cancelFriendRequest(token: string, requestId: string): Promise<void> {
+  await api(`/api/friends/requests/${encodeURIComponent(requestId)}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function fetchBoostFeed(
+  token: string,
+  params?: { limit?: number; before?: string },
+): Promise<{ items: BoostFeedItem[]; next_before?: string }> {
+  const q = new URLSearchParams();
+  if (params?.limit != null && params.limit > 0) q.set("limit", String(params.limit));
+  if (params?.before) q.set("before", params.before);
+  const qs = q.toString();
+  const d = await api<{ items?: BoostFeedItem[]; next_before?: string }>(
+    `/api/boost/feed${qs ? `?${qs}` : ""}`,
+    { token },
+  );
+  return { items: asArray(d.items), next_before: d.next_before };
+}
+
+/** Une réaction reçue sur une de ses propres courses. */
+export type BoostReceived = {
+  kind: BoostKind;
+  created_at: string;
+  run_id: string;
+  user: FriendUser;
+  distance_m?: number;
+  avg_pace_sec_per_km?: number;
+  run_created_at?: string;
+};
+
+export async function fetchBoostsReceived(token: string, limit = 20): Promise<BoostReceived[]> {
+  const d = await api<{ items?: BoostReceived[] }>(`/api/boost/received?limit=${limit}`, {
+    token,
+  });
+  return asArray(d.items);
+}
+
+export type LeaderboardRow = {
+  user: FriendUser;
+  distance_m: number;
+  runs: number;
+  is_me: boolean;
+  rank: number;
+};
+
+export async function fetchBoostLeaderboard(
+  token: string,
+): Promise<{ week_start: string; rows: LeaderboardRow[] }> {
+  const d = await api<{ week_start?: string; rows?: LeaderboardRow[] }>(
+    "/api/boost/leaderboard",
+    { token },
+  );
+  return { week_start: d.week_start ?? "", rows: asArray(d.rows) };
+}
+
+export async function boostRun(token: string, runId: string, kind: BoostKind): Promise<void> {
+  await api(`/api/live-runs/${encodeURIComponent(runId)}/boost`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ kind }),
+  });
+}
+
+export async function removeBoost(token: string, runId: string): Promise<void> {
+  await api(`/api/live-runs/${encodeURIComponent(runId)}/boost`, { method: "DELETE", token });
 }

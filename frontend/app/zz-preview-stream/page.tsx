@@ -66,7 +66,7 @@ export default function Page() {
       })
     createGoalStreaming(
       'faux-token',
-      { distance_km: 10, weeks: 4, sessions_per_week: 3, target_time: '50 min' },
+      { distance_km: 10, terrain: 'road', weeks: 4, sessions_per_week: 3, target_time: '50 min' },
       (p) => {
         setProgress(p)
         setSeen((s) => [...s, p])
