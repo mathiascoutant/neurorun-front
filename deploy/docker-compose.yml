@@ -2,6 +2,10 @@
 #   docker login ghcr.io  # si images privées
 #   docker compose pull && docker compose up -d
 
+# Nom de projet Compose explicite : sans lui, le projet prendrait le nom du dossier
+# (« back » ou « front »), trop générique sur un VPS partagé avec VisionShow et Cerveau.
+name: neurorun-front
+
 services:
   web:
     image: ghcr.io/mathiascoutant/neurorun-front:latest
