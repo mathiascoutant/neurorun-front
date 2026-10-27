@@ -2182,3 +2182,148 @@ export async function boostRun(token: string, runId: string, kind: BoostKind): P
 export async function removeBoost(token: string, runId: string): Promise<void> {
   await api(`/api/live-runs/${encodeURIComponent(runId)}/boost`, { method: "DELETE", token });
 }
+
+/* ---------- Chaussures : paires, usure théorique, paire portée ---------- */
+
+export type ShoeCategory = "daily" | "cushion" | "stability" | "tempo" | "race" | "trail";
+
+/** Modèle du catalogue tenu par l’API (aucune base publique gratuite n’existe). */
+export type ShoeCatalogModel = {
+  id: string;
+  brand: string;
+  model: string;
+  category: ShoeCategory;
+  lifespan_km: number;
+};
+
+export type ShoeCategoryInfo = { id: ShoeCategory; label: string; lifespan_km: number };
+
+export type ShoeWearStatus = "new" | "good" | "watch" | "replace" | "worn";
+
+export type ShoeWear = {
+  used_km: number;
+  lifespan_km: number;
+  remaining_km: number;
+  /** Part de la durée de vie consommée ; dépasse 100 une fois la paire usée. */
+  wear_pct: number;
+  status: ShoeWearStatus;
+  km_per_week: number;
+  weeks_left?: number;
+  /** AAAA-MM-JJ : date de remplacement projetée au rythme actuel. */
+  replace_on?: string;
+};
+
+export type Shoe = {
+  id: string;
+  brand: string;
+  model: string;
+  nickname?: string;
+  catalog_id?: string;
+  category: ShoeCategory;
+  lifespan_km: number;
+  /** AAAA-MM-JJ : depuis quand le coureur a la paire. */
+  started_on: string;
+  /** Kilomètres faits avant l’ajout dans NeuroRun. */
+  initial_km: number;
+  retired: boolean;
+  retired_at?: string;
+  created_at: string;
+  /** Courses NeuroRun rattachées à la paire. */
+  runs: number;
+  wear: ShoeWear;
+};
+
+export type ShoeCreatePayload = {
+  catalog_id?: string;
+  brand?: string;
+  model?: string;
+  nickname?: string;
+  category?: ShoeCategory;
+  lifespan_km?: number;
+  started_on: string;
+  initial_km: number;
+};
+
+export type ShoePatchPayload = {
+  nickname?: string;
+  lifespan_km?: number;
+  initial_km?: number;
+  started_on?: string;
+  retired?: boolean;
+};
+
+/** Course terminée dont l’app ne sait pas encore avec quelle paire elle a été faite. */
+export type PendingShoeRun = {
+  id: string;
+  created_at: string;
+  started_at: string;
+  name?: string;
+  distance_m: number;
+  moving_sec: number;
+  avg_pace_sec_per_km: number;
+  session_type: string;
+  score_total?: number;
+  elevation_gain_m?: number;
+};
+
+export async function listShoes(token: string): Promise<Shoe[]> {
+  const d = await api<{ shoes?: Shoe[] }>("/api/shoes", { token });
+  return asArray(d.shoes);
+}
+
+export async function fetchShoeCatalog(
+  token: string,
+): Promise<{ models: ShoeCatalogModel[]; categories: ShoeCategoryInfo[] }> {
+  const d = await api<{ models?: ShoeCatalogModel[]; categories?: ShoeCategoryInfo[] }>(
+    "/api/shoes/catalog",
+    { token },
+  );
+  return { models: asArray(d.models), categories: asArray(d.categories) };
+}
+
+/** Kilomètres courus depuis un jour (NeuroRun + Strava, sans doublon). */
+export async function fetchShoeHistoryKm(
+  token: string,
+  since: string,
+): Promise<{ km: number; runs: number; strava_included: boolean }> {
+  return api(`/api/shoes/history-km?since=${encodeURIComponent(since)}`, { token });
+}
+
+export async function createShoe(token: string, body: ShoeCreatePayload): Promise<Shoe> {
+  return api<Shoe>("/api/shoes", { method: "POST", token, body: JSON.stringify(body) });
+}
+
+export async function patchShoe(token: string, id: string, body: ShoePatchPayload): Promise<Shoe> {
+  return api<Shoe>(`/api/shoes/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteShoe(token: string, id: string): Promise<void> {
+  await api(`/api/shoes/${encodeURIComponent(id)}`, { method: "DELETE", token });
+}
+
+export async function fetchPendingShoeRun(
+  token: string,
+): Promise<{ run: PendingShoeRun | null; shoes: Shoe[]; remaining: number }> {
+  const d = await api<{ run?: PendingShoeRun | null; shoes?: Shoe[]; remaining?: number }>(
+    "/api/shoes/pending-run",
+    { token },
+  );
+  return { run: d.run ?? null, shoes: asArray(d.shoes), remaining: d.remaining ?? 0 };
+}
+
+/** Paire portée pour une course ; `null` = aucune de ces paires. */
+export async function setLiveRunShoe(
+  token: string,
+  runId: string,
+  shoeId: string | null,
+): Promise<void> {
+  await api(`/api/live-runs/${encodeURIComponent(runId)}/shoe`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify({ shoe_id: shoeId ?? "" }),
+  });
+}

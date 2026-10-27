@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { Mark } from '@/components/Mark'
 import { MemberMobileDrawer } from '@/components/MemberMobileDrawer'
 import { MemberPrimaryNav, type MemberNavActive } from '@/components/MemberPrimaryNav'
+import { NewRunShoePrompt } from '@/components/shoes/NewRunShoePrompt'
 import type { MeCapabilities } from '@/lib/api'
 
 type Props = {
@@ -31,7 +32,9 @@ type Props = {
  *
  * Toutes les pages membres passent par ici — c’est ce qui garantit que la barre
  * est identique d’un écran à l’autre (placement, largeur, état actif) plutôt que
- * recopiée dans chaque page.
+ * recopiée dans chaque page. C’est aussi pour cela que la question « avec
+ * quelle paire as-tu couru ? » est montée ici : elle surgit sur n’importe
+ * quel écran au retour dans l’app.
  */
 export function MemberSidebar({
   active,
@@ -90,6 +93,9 @@ export function MemberSidebar({
       >
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden px-3 pb-safe pt-3.5">{nav(onClose)}</div>
       </MemberMobileDrawer>
+
+      {/* Course arrivée de la montre sans paire : récap + « avec quelle paire ? ». */}
+      <NewRunShoePrompt />
     </>
   )
 }

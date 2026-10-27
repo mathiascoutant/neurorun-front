@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { MeCapabilities } from '@/lib/api'
+import { SHOE_ICON_PATH } from '@/components/shoes/ShoeModal'
 
 export type MemberNavActive =
   | 'dashboard'
@@ -9,6 +10,7 @@ export type MemberNavActive =
   | 'prevision'
   | 'run'
   | 'circuit'
+  | 'shoes'
   | 'boost'
   | 'ambassador'
   | 'profile'
@@ -56,6 +58,8 @@ const ICONS = {
     'M12 3.75c-3.75 0-6.75 2.25-6.75 5.25 0 3 3 5.25 6.75 8.25 3.75-3 6.75-5.25 6.75-8.25 0-3-3-5.25-6.75-5.25zm0 7.5a2.25 2.25 0 110-4.5 2.25 2.25 0 010 4.5z',
   goals:
     'M12 21a9 9 0 100-18 9 9 0 000 18zm0-3a6 6 0 100-12 6 6 0 000 12zm0-3a3 3 0 100-6 3 3 0 000 6z',
+  /* Silhouette de chaussure : suivi d’usure des paires. */
+  shoes: SHOE_ICON_PATH,
   /* Éclair : la réaction qu’on envoie à la course d’un ami. */
   boost: 'M13 2L4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z',
   admin:
@@ -87,6 +91,7 @@ const GROUPS: { label: string; items: NavEntry[] }[] = [
     items: [
       { key: 'run', label: 'Course', href: '/run/', icon: 'run', capability: 'live_runs' },
       { key: 'circuit', label: 'Parcours', href: '/circuit/', icon: 'circuit', capability: 'circuit_tracks' },
+      { key: 'shoes', label: 'Chaussures', href: '/chaussures/', icon: 'shoes' },
     ],
   },
   {
